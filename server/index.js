@@ -9,10 +9,12 @@ import { getDb, defaultUserPayload } from './db.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
-const FRONTEND_ORIGINS = String(process.env.FRONTEND_ORIGIN || 'http://localhost:5173')
+const DEFAULT_FRONTEND_ORIGINS = ['http://localhost:5173', 'https://blue-study.vercel.app'];
+const FRONTEND_ORIGINS = String(process.env.FRONTEND_ORIGIN || '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+const ALLOWED_ORIGINS = [...new Set([...DEFAULT_FRONTEND_ORIGINS, ...FRONTEND_ORIGINS])];
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 
@@ -20,7 +22,7 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID || undefined);
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || FRONTEND_ORIGINS.includes(origin)) {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
       callback(null, true);
       return;
     }
@@ -76,7 +78,7 @@ async function authRequired(req, res, next) {
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true });
+  res.json({ status: 'ok' });
 });
 
 app.get('/api/public-config', (_req, res) => {

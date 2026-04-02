@@ -1,13 +1,12 @@
-const API_BASE = (import.meta.env.VITE_API_BASE || '').trim();
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 12000);
 
 function normalizeBase(base) {
-  return base.replace(/\/+$/, '');
+  return String(base).trim().replace(/\/+$/, '');
 }
 
 function withBase(path) {
   const safePath = path.startsWith('/') ? path : `/${path}`;
-  if (!API_BASE) return safePath;
   return `${normalizeBase(API_BASE)}${safePath}`;
 }
 

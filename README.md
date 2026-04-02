@@ -18,19 +18,19 @@ Create `.env` from `.env.example` and fill values:
 
 ```env
 PORT=4000
-FRONTEND_ORIGIN=http://localhost:5173
+FRONTEND_ORIGIN=https://blue-study.vercel.app
 JWT_SECRET=replace_with_a_long_random_secret
 GOOGLE_CLIENT_ID=your_google_web_client_id.apps.googleusercontent.com
 VITE_GOOGLE_CLIENT_ID=your_google_web_client_id.apps.googleusercontent.com
-VITE_API_BASE=
+VITE_API_BASE=https://your-backend-domain
 VITE_API_TIMEOUT_MS=12000
 ```
 
 Notes:
 
 - `FRONTEND_ORIGIN` supports multiple origins separated by commas.
-- Leave `VITE_API_BASE` empty in local dev to use Vite proxy (`/api`).
-- Set `VITE_API_BASE=https://your-api-domain` when frontend and backend are deployed on different domains.
+- `VITE_API_BASE` should point to the deployed backend URL in production.
+- If `VITE_API_BASE` is missing, frontend falls back to `http://localhost:4000`.
 
 ## 3) Run project
 
@@ -57,3 +57,5 @@ npm run dev
 - `PUT /api/user-data`
 
 User data is persisted in `server/data/db.json`.
+
+Production note: lowdb uses local filesystem storage and is not durable on many cloud platforms. Use a managed database (Postgres/MySQL/MongoDB) for real production workloads.

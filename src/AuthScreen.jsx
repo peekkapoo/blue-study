@@ -20,7 +20,7 @@ export default function AuthScreen({ onAuthSuccess }) {
       try {
         const healthRes = await authApi.health();
         if (!mounted) return;
-        setBackendReady(Boolean(healthRes?.ok));
+        setBackendReady(healthRes?.status === 'ok');
       } catch {
         if (!mounted) return;
         setBackendReady(false);
