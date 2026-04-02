@@ -47,6 +47,20 @@ npm run dev:server
 npm run dev
 ```
 
+## Render backend settings (production)
+
+- Service type: `Web Service`
+- Build command: `npm install`
+- Start command: `npm start`
+- Health check path: `/api/health`
+
+If backend returns `503` on Render:
+
+- Check Render logs for startup crash.
+- Ensure Node runtime is 18+.
+- Ensure env vars are set: `JWT_SECRET`, `FRONTEND_ORIGIN`.
+- Redeploy service after updating env.
+
 ## 4) API summary
 
 - `POST /api/auth/register`
