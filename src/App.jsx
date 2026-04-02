@@ -3,8 +3,19 @@ import {
   LayoutDashboard, BookOpen, Calendar as CalIcon, Plus, Trash2,
   ChevronRight, ChevronLeft, Clock, Search, Tag, X, Check,
   Sparkles, Bot, Send, User, Target, Zap, CheckCircle2,
-  TrendingUp, Flame
+  TrendingUp, Flame, Languages
 } from 'lucide-react';
+import {
+  LANG_META,
+  CATEGORY_LABELS,
+  UI_TEXT,
+  CATEGORY_ALIASES,
+  DEFAULT_CATEGORIES,
+  INITIAL_NOTE_SEEDS,
+  INITIAL_TASK_SEEDS,
+  SEED_NOTE_TEXTS,
+  SEED_TASK_TEXTS,
+} from './App.i18n';
 
 /* ─── FONTS & GLOBAL CSS ─── */
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');`;
@@ -72,12 +83,38 @@ const STYLES = `
   .strike { text-decoration: line-through; text-decoration-color: #94a3b8; }
 `;
 
+const normalizeCategory = (value) => CATEGORY_ALIASES[value] || value;
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const toDateKey = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+const parseDateKey = (dateKey) => {
+  if (!dateKey || typeof dateKey !== 'string') return new Date();
+  const m = dateKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return new Date();
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+};
+const normalizeDateKey = (input, fallbackDate = new Date()) => {
+  if (!input) return toDateKey(fallbackDate);
+  if (typeof input === 'string') {
+    const iso = input.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (iso) return input;
+    const dmySlash = input.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dmySlash) return `${dmySlash[3]}-${pad2(Number(dmySlash[2]))}-${pad2(Number(dmySlash[1]))}`;
+    const dmyDot = input.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (dmyDot) return `${dmyDot[3]}-${pad2(Number(dmyDot[2]))}-${pad2(Number(dmyDot[1]))}`;
+    const ymdSlash = input.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+    if (ymdSlash) return `${ymdSlash[1]}-${pad2(Number(ymdSlash[2]))}-${pad2(Number(ymdSlash[3]))}`;
+  }
+  if (input instanceof Date && !isNaN(input)) return toDateKey(input);
+  return toDateKey(fallbackDate);
+};
+
 /* ─── CATEGORY COLOUR MAP ─── */
 const CAT_COLORS = {
-  'Chung':       { pill: 'bg-blue-100 text-blue-700',   dot: 'bg-blue-500',   icon: 'bg-blue-50 text-blue-600' },
-  'Công nghệ':   { pill: 'bg-cyan-100 text-cyan-700',   dot: 'bg-cyan-500',   icon: 'bg-cyan-50 text-cyan-600' },
-  'Ngoại ngữ':   { pill: 'bg-indigo-100 text-indigo-700', dot: 'bg-indigo-500', icon: 'bg-indigo-50 text-indigo-600' },
-  'Kỹ năng':     { pill: 'bg-sky-100 text-sky-700',     dot: 'bg-sky-500',    icon: 'bg-sky-50 text-sky-600' },
+  general: { pill: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500', icon: 'bg-blue-50 text-blue-600' },
+  tech: { pill: 'bg-cyan-100 text-cyan-700', dot: 'bg-cyan-500', icon: 'bg-cyan-50 text-cyan-600' },
+  language: { pill: 'bg-indigo-100 text-indigo-700', dot: 'bg-indigo-500', icon: 'bg-indigo-50 text-indigo-600' },
+  skill: { pill: 'bg-sky-100 text-sky-700', dot: 'bg-sky-500', icon: 'bg-sky-50 text-sky-600' },
 };
 const catColor = (cat) => CAT_COLORS[cat] ?? { pill: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400', icon: 'bg-slate-50 text-slate-500' };
 
@@ -95,28 +132,37 @@ const Stat = ({ label, value, sub }) => (
 ══════════════════════════════════════════════ */
 export default function App() {
   /* ─── State ─── */
+  const [lang, setLang]                 = useState('vi');
   const [tab, setTab]                   = useState('dashboard');
   const [curMonth, setCurMonth]         = useState(new Date());
   const [selDate, setSelDate]           = useState(new Date());
   const [searchQ, setSearchQ]           = useState('');
-  const [categories, setCategories]     = useState(['Chung', 'Công nghệ', 'Ngoại ngữ', 'Kỹ năng']);
+  const [categories, setCategories]     = useState(DEFAULT_CATEGORIES);
   const [newCatInput, setNewCatInput]   = useState('');
-  const [filterCat, setFilterCat]       = useState('Tất cả');
+  const [filterCat, setFilterCat]       = useState('all');
+
+  const t = UI_TEXT[lang] || UI_TEXT.vi;
+  const locale = LANG_META[lang]?.locale || 'vi-VN';
+  const formatDate = (date, options) => date.toLocaleDateString(locale, options);
+  const formatDateFromKey = (dateKey, options) => formatDate(parseDateKey(dateKey), options);
+  const categoryLabel = (cat) => (CATEGORY_LABELS[lang]?.[cat] || cat);
+  const seedNoteText = (seedKey) => SEED_NOTE_TEXTS[seedKey]?.[lang] || SEED_NOTE_TEXTS[seedKey]?.vi;
+  const seedTaskText = (seedKey) => SEED_TASK_TEXTS[seedKey]?.[lang] || SEED_TASK_TEXTS[seedKey]?.vi;
+  const getNoteTitle = (note) => note.seedKey ? seedNoteText(note.seedKey)?.title || note.title || '' : note.title || '';
+  const getNoteContent = (note) => note.seedKey ? seedNoteText(note.seedKey)?.content || note.content || '' : note.content || '';
+  const getTaskTitle = (task) => task.seedKey ? seedTaskText(task.seedKey) || task.task || '' : task.task || '';
 
   const today   = new Date();
-  const todayStr = today.toLocaleDateString('vi-VN');
+  const todayKey = toDateKey(today);
 
-  const [notes, setNotes] = useState([
-    { id: 1, title: 'Cấu trúc dữ liệu & Giải thuật', content: 'Ôn tập về Linked List, Tree và ứng dụng trong tối ưu hóa hiệu suất ứng dụng.', date: todayStr, category: 'Công nghệ' },
-    { id: 2, title: 'IELTS Writing Task 1', content: 'Tổng hợp từ vựng miêu tả biểu đồ xu hướng (Trend) và so sánh.', date: todayStr, category: 'Ngoại ngữ' },
-  ]);
-  const [tasks, setTasks] = useState([
-    { id: 1, task: 'Làm bài tập giải tích', completed: false, time: '08:00', date: todayStr },
-    { id: 2, task: 'Đọc tài liệu React Hooks', completed: true,  time: '10:30', date: todayStr },
-    { id: 3, task: 'Tham gia Review Code', completed: false, time: '14:00', date: todayStr },
-  ]);
+  const [notes, setNotes] = useState(
+    INITIAL_NOTE_SEEDS.map(n => ({ ...n, dateKey: todayKey }))
+  );
+  const [tasks, setTasks] = useState(
+    INITIAL_TASK_SEEDS.map(t => ({ ...t, task: seedTaskText(t.seedKey), dateKey: todayKey }))
+  );
 
-  const [newNote, setNewNote] = useState({ title: '', content: '', category: 'Chung' });
+  const [newNote, setNewNote] = useState({ title: '', content: '', category: 'general' });
   const [newTask, setNewTask] = useState({ title: '', time: '09:00' });
 
   /* ─── AI ─── */
@@ -124,26 +170,52 @@ export default function App() {
   const [aiInput, setAiInput]         = useState('');
   const [aiLoading, setAiLoading]     = useState(false);
   const [chatHistory, setChatHistory] = useState([
-    { role: 'ai', content: 'Xin chào! Mình là BlueStudy AI 🌊 Bạn cần mình giúp thêm lịch học, ghi chú tài liệu, hay kiểm tra công việc hôm nay?' }
+    { role: 'ai', content: t.aiWelcome }
   ]);
   const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    setChatHistory(prev => {
+      if (!prev.length) return [{ role: 'ai', content: t.aiWelcome }];
+      return prev;
+    });
+  }, [t.aiWelcome]);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatHistory, aiOpen]);
 
   /* ─── Persistence ─── */
   useEffect(() => {
     try {
+      const l = localStorage.getItem('bs3-lang');
       const n = localStorage.getItem('bs3-notes');
       const t = localStorage.getItem('bs3-tasks');
       const c = localStorage.getItem('bs3-cats');
-      if (n) setNotes(JSON.parse(n));
-      if (t) setTasks(JSON.parse(t));
-      if (c) { const p = JSON.parse(c); if (p.length) setCategories(p); }
+      if (l && LANG_META[l]) setLang(l);
+      if (n) {
+        const parsed = JSON.parse(n).map(note => ({
+          ...note,
+          category: normalizeCategory(note.category),
+          dateKey: normalizeDateKey(note.dateKey || note.date),
+        }));
+        setNotes(parsed);
+      }
+      if (t) {
+        const parsed = JSON.parse(t).map(task => ({
+          ...task,
+          dateKey: normalizeDateKey(task.dateKey || task.date),
+        }));
+        setTasks(parsed);
+      }
+      if (c) {
+        const p = JSON.parse(c).map(normalizeCategory);
+        if (p.length) setCategories(p);
+      }
     } catch {}
   }, []);
   useEffect(() => { localStorage.setItem('bs3-notes', JSON.stringify(notes)); }, [notes]);
   useEffect(() => { localStorage.setItem('bs3-tasks', JSON.stringify(tasks)); }, [tasks]);
   useEffect(() => { localStorage.setItem('bs3-cats',  JSON.stringify(categories)); }, [categories]);
+  useEffect(() => { localStorage.setItem('bs3-lang', lang); }, [lang]);
 
   /* ─── Calendar ─── */
   const calDays = useMemo(() => {
@@ -160,20 +232,20 @@ export default function App() {
     if (t && !categories.includes(t)) { setCategories([...categories, t]); setNewCatInput(''); }
   };
   const removeCategory = (cat) => {
-    if (cat === 'Chung') return;
+    if (cat === 'general') return;
     setCategories(categories.filter(c => c !== cat));
-    if (filterCat === cat) setFilterCat('Tất cả');
-    if (newNote.category === cat) setNewNote({ ...newNote, category: 'Chung' });
+    if (filterCat === cat) setFilterCat('all');
+    if (newNote.category === cat) setNewNote({ ...newNote, category: 'general' });
   };
   const addNote = () => {
     if (!newNote.title.trim()) return;
-    setNotes([{ ...newNote, id: Date.now(), date: selDate.toLocaleDateString('vi-VN') }, ...notes]);
-    setNewNote({ title: '', content: '', category: categories[0] || 'Chung' });
+    setNotes([{ ...newNote, id: Date.now(), dateKey: toDateKey(selDate) }, ...notes]);
+    setNewNote({ title: '', content: '', category: categories[0] || 'general' });
   };
   const addTask = (e) => {
     e?.preventDefault();
     if (!newTask.title.trim()) return;
-    setTasks([{ id: Date.now(), task: newTask.title, time: newTask.time || '00:00', completed: false, date: selDate.toLocaleDateString('vi-VN') }, ...tasks]);
+    setTasks([{ id: Date.now(), task: newTask.title, time: newTask.time || '00:00', completed: false, dateKey: toDateKey(selDate) }, ...tasks]);
     setNewTask({ title: '', time: '09:00' });
   };
   const toggleTask  = (id) => setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
@@ -181,21 +253,21 @@ export default function App() {
   const deleteNote  = (id) => setNotes(notes.filter(n => n.id !== id));
 
   /* ─── Derived ─── */
-  const todayTasks      = tasks.filter(t => t.date === todayStr);
+  const todayTasks      = tasks.filter(t => t.dateKey === todayKey);
   const completedToday  = todayTasks.filter(t => t.completed).length;
   const progress        = todayTasks.length > 0 ? Math.round((completedToday / todayTasks.length) * 100) : 0;
-  const selDateStr      = selDate.toLocaleDateString('vi-VN');
-  const filteredTasks   = tasks.filter(t => t.date === selDateStr);
+  const selDateKey      = toDateKey(selDate);
+  const filteredTasks   = tasks.filter(t => t.dateKey === selDateKey);
   const nextTask        = tasks.find(t => !t.completed);
 
   const displayedNotes = useMemo(() => {
-    let r = filterCat === 'Tất cả' ? notes : notes.filter(n => n.category === filterCat);
+    let r = filterCat === 'all' ? notes : notes.filter(n => n.category === filterCat);
     if (searchQ.trim()) r = r.filter(n =>
-      n.title.toLowerCase().includes(searchQ.toLowerCase()) ||
-      n.content.toLowerCase().includes(searchQ.toLowerCase())
+      getNoteTitle(n).toLowerCase().includes(searchQ.toLowerCase()) ||
+      getNoteContent(n).toLowerCase().includes(searchQ.toLowerCase())
     );
     return r;
-  }, [notes, filterCat, searchQ]);
+  }, [notes, filterCat, searchQ, lang]);
 
   /* ─── AI (Anthropic) ─── */
   const handleAI = async (e) => {
@@ -206,12 +278,13 @@ export default function App() {
     setAiInput('');
     setAiLoading(true);
     try {
-      const systemPrompt = `Bạn là BlueStudy AI, trợ lý học tập. Hôm nay: ${todayStr}.
-Công việc chưa xong: ${JSON.stringify(tasks.filter(t => !t.completed).map(t => ({ task: t.task, date: t.date, time: t.time })))}
+      const systemPrompt = `You are BlueStudy AI, a study assistant. Reply in ${t.aiReplyLang}.
+    Today: ${formatDateFromKey(todayKey)}.
+    Incomplete tasks: ${JSON.stringify(tasks.filter(t => !t.completed).map(task => ({ task: getTaskTitle(task), date: task.dateKey, time: task.time })))}
 Danh mục: ${categories.join(', ')}
 
-Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
-{"reply":"câu trả lời tiếng Việt","action":"CHAT|ADD_TASK|ADD_NOTE","newTasks":[{"title":"","time":"HH:MM","dateString":"YYYY-MM-DD"}],"newNotes":[{"title":"","content":"","category":""}]}`;
+    Return plain JSON only (no markdown):
+    {"reply":"text","action":"CHAT|ADD_TASK|ADD_NOTE","newTasks":[{"title":"","time":"HH:MM","dateString":"YYYY-MM-DD"}],"newNotes":[{"title":"","content":"","category":""}]}`;
 
       const res  = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -229,33 +302,33 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
       try { result = JSON.parse(raw.replace(/```json|```/g, '').trim()); }
       catch { result = { reply: raw, action: 'CHAT' }; }
 
-      setChatHistory(prev => [...prev, { role: 'ai', content: result.reply || 'Xin lỗi, có lỗi xảy ra.' }]);
+      setChatHistory(prev => [...prev, { role: 'ai', content: result.reply || t.genericError }]);
 
       if (result.action === 'ADD_TASK' && result.newTasks?.length) {
         setTasks(prev => [
           ...result.newTasks.map(t => {
             const d = t.dateString ? new Date(t.dateString + 'T00:00:00') : new Date();
-            return { id: Date.now() + Math.random(), task: t.title, time: t.time || '00:00', completed: false, date: (isNaN(d) ? new Date() : d).toLocaleDateString('vi-VN') };
+            return { id: Date.now() + Math.random(), task: t.title, time: t.time || '00:00', completed: false, dateKey: toDateKey(isNaN(d) ? new Date() : d) };
           }),
           ...prev
         ]);
       }
       if (result.action === 'ADD_NOTE' && result.newNotes?.length) {
         setNotes(prev => [
-          ...result.newNotes.map(n => ({ id: Date.now() + Math.random(), title: n.title, content: n.content, category: categories.includes(n.category) ? n.category : 'Chung', date: todayStr })),
+          ...result.newNotes.map(n => ({ id: Date.now() + Math.random(), title: n.title, content: n.content, category: categories.includes(normalizeCategory(n.category)) ? normalizeCategory(n.category) : 'general', dateKey: todayKey })),
           ...prev
         ]);
       }
     } catch {
-      setChatHistory(prev => [...prev, { role: 'ai', content: 'Lỗi kết nối, bạn thử lại sau nhé! 🙏' }]);
+      setChatHistory(prev => [...prev, { role: 'ai', content: t.connectionError }]);
     } finally { setAiLoading(false); }
   };
 
   /* ─── Nav items ─── */
   const NAV = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { id: 'calendar',  icon: CalIcon,         label: 'Lịch trình' },
-    { id: 'notes',     icon: BookOpen,         label: 'Tài liệu' },
+    { id: 'dashboard', icon: LayoutDashboard, label: t.dashboard },
+    { id: 'calendar',  icon: CalIcon,         label: t.calendar },
+    { id: 'notes',     icon: BookOpen,         label: t.notes },
   ];
 
   /* ════════════════════════════════
@@ -319,17 +392,28 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
         <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-7">
           <div>
             <p className="text-[11px] font-bold text-sky-500 uppercase tracking-[2.5px] mb-1">
-              {today.toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              {formatDate(today, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
             <h1 className="syne text-2xl md:text-[2rem] font-bold text-[#0A1628] leading-tight">
-              {tab === 'dashboard' ? 'Chào buổi sáng 👋' : tab === 'calendar' ? 'Lịch Trình' : 'Tài Liệu'}
+              {tab === 'dashboard' ? t.greeting : tab === 'calendar' ? t.schedule : t.docs}
             </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <Languages size={16} className="text-sky-500" />
+            <select
+              value={lang}
+              onChange={(e) => setLang(e.target.value)}
+              aria-label={t.language}
+              className="px-2.5 py-2 glass rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-sky-400/30"
+            >
+              {Object.entries(LANG_META).map(([k, v]) => <option key={k} value={k}>{v.flag} {v.name}</option>)}
+            </select>
           </div>
           {tab === 'notes' && (
             <div className="relative">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-sky-400" />
               <input value={searchQ} onChange={e => setSearchQ(e.target.value)}
-                placeholder="Tìm kiếm tài liệu..."
+                placeholder={t.searchDocs}
                 className="pl-9 pr-4 py-2.5 glass rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400 transition-all w-52 sm:w-64 placeholder:text-slate-400" />
             </div>
           )}
@@ -345,10 +429,10 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
               <div className="relative z-10">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse block" />
-                  <span className="text-[10px] font-bold text-sky-300 uppercase tracking-[2px]">Tiến độ hôm nay</span>
+                  <span className="text-[10px] font-bold text-sky-300 uppercase tracking-[2px]">{t.todayProgress}</span>
                 </div>
                 <h2 className="syne text-5xl font-bold leading-none">{progress}<span className="text-2xl text-blue-300">%</span></h2>
-                <p className="text-sky-200 text-sm mt-1 mb-5">{completedToday}/{todayTasks.length} công việc hoàn thành</p>
+                <p className="text-sky-200 text-sm mt-1 mb-5">{completedToday}/{todayTasks.length} {t.completedTasks}</p>
 
                 {/* Progress bar */}
                 <div className="w-full h-2 rounded-full overflow-hidden mb-6" style={{ background: 'rgba(255,255,255,0.1)' }}>
@@ -357,9 +441,9 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
                 </div>
 
                 <div className="flex gap-3">
-                  <Stat label="Tài liệu" value={notes.length} />
-                  <Stat label="Công việc" value={tasks.length} />
-                  <Stat label="Danh mục" value={categories.length} />
+                  <Stat label={t.docsCount} value={notes.length} />
+                  <Stat label={t.tasksCount} value={tasks.length} />
+                  <Stat label={t.categoriesCount} value={categories.length} />
                 </div>
               </div>
               {/* Glow decorations */}
@@ -372,7 +456,7 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
             {/* Today's tasks */}
             <div className="glass rounded-3xl p-5 flex flex-col shadow-sm">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="syne font-bold text-[#0A1628]">Hôm nay</h3>
+                <h3 className="syne font-bold text-[#0A1628]">{t.today}</h3>
                 <span className="text-[10px] font-bold bg-sky-100 text-sky-600 px-2 py-1 rounded-full">{todayTasks.length} TASKS</span>
               </div>
               <div className="flex-1 space-y-1.5 overflow-y-auto scroll max-h-[200px]">
@@ -384,29 +468,29 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
                       {task.completed && <Check size={11} strokeWidth={3.5} className="text-white" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium truncate transition-all ${task.completed ? 'strike text-slate-400' : 'text-slate-700'}`}>{task.task}</p>
+                      <p className={`text-sm font-medium truncate transition-all ${task.completed ? 'strike text-slate-400' : 'text-slate-700'}`}>{getTaskTitle(task)}</p>
                       <p className="text-[11px] text-slate-400">{task.time}</p>
                     </div>
                   </div>
                 )) : (
                   <div className="text-center py-8 opacity-50">
                     <CheckCircle2 size={30} strokeWidth={1.5} className="mx-auto mb-2 text-slate-300" />
-                    <p className="text-sm text-slate-500">Chưa có công việc</p>
+                    <p className="text-sm text-slate-500">{t.noTasksYet}</p>
                   </div>
                 )}
               </div>
               <button onClick={() => setTab('calendar')}
                 className="mt-4 w-full py-2.5 rounded-xl text-sm font-bold text-white transition-colors flex items-center justify-center gap-2"
                 style={{ background: 'linear-gradient(90deg, #0EA5E9, #0284C7)' }}>
-                <Plus size={15} strokeWidth={3} /> Thêm công việc
+                <Plus size={15} strokeWidth={3} /> {t.addTask}
               </button>
             </div>
 
             {/* Recent notes */}
             <div className="lg:col-span-2 glass rounded-3xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="syne font-bold text-[#0A1628]">Tài liệu gần đây</h3>
-                <button onClick={() => setTab('notes')} className="text-xs text-sky-500 hover:text-sky-700 font-semibold transition-colors">Xem tất cả →</button>
+                <h3 className="syne font-bold text-[#0A1628]">{t.recentDocs}</h3>
+                <button onClick={() => setTab('notes')} className="text-xs text-sky-500 hover:text-sky-700 font-semibold transition-colors">{t.viewAll}</button>
               </div>
               <div className="space-y-2">
                 {notes.slice(0, 3).map(note => {
@@ -417,13 +501,13 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
                         <BookOpen size={15} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-slate-800 truncate">{note.title}</p>
-                        <p className="text-[11px] text-slate-400">{note.category} · {note.date}</p>
+                        <p className="text-sm font-semibold text-slate-800 truncate">{getNoteTitle(note)}</p>
+                        <p className="text-[11px] text-slate-400">{categoryLabel(note.category)} · {formatDateFromKey(note.dateKey)}</p>
                       </div>
                     </div>
                   );
                 })}
-                {notes.length === 0 && <p className="text-sm text-slate-400 text-center py-4">Chưa có tài liệu nào</p>}
+                {notes.length === 0 && <p className="text-sm text-slate-400 text-center py-4">{t.noDocs}</p>}
               </div>
             </div>
 
@@ -435,19 +519,19 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
               <div className="relative z-10">
                 <div className="flex items-center gap-2 mb-3">
                   <Target size={16} className="opacity-80" />
-                  <span className="text-xs font-semibold opacity-80 uppercase tracking-wider">Task tiếp theo</span>
+                  <span className="text-xs font-semibold opacity-80 uppercase tracking-wider">{t.nextTask}</span>
                 </div>
                 {nextTask ? (
                   <>
-                    <h3 className="syne text-lg font-bold leading-snug mb-4">{nextTask.task}</h3>
+                    <h3 className="syne text-lg font-bold leading-snug mb-4">{getTaskTitle(nextTask)}</h3>
                     <div className="flex items-center gap-2 bg-white/20 rounded-xl px-3 py-2">
                       <Clock size={14} />
                       <span className="text-sm font-medium">{nextTask.time}</span>
-                      <span className="text-xs opacity-60 ml-auto">{nextTask.date}</span>
+                      <span className="text-xs opacity-60 ml-auto">{formatDateFromKey(nextTask.dateKey)}</span>
                     </div>
                   </>
                 ) : (
-                  <p className="text-white/70 text-sm mt-2">🎉 Tất cả đã hoàn thành!</p>
+                  <p className="text-white/70 text-sm mt-2">🎉 {t.allDone}</p>
                 )}
               </div>
             </div>
@@ -462,7 +546,7 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
             <div className="lg:col-span-3 glass rounded-3xl p-6 md:p-8 shadow-sm">
               <div className="flex items-center justify-between mb-7">
                 <h2 className="syne text-xl font-bold text-[#0A1628]">
-                  Tháng {curMonth.getMonth() + 1} &nbsp;·&nbsp; {curMonth.getFullYear()}
+                  {t.month} {curMonth.getMonth() + 1} &nbsp;·&nbsp; {curMonth.getFullYear()}
                 </h2>
                 <div className="flex gap-1">
                   {[ChevronLeft, ChevronRight].map((Icon, i) => (
@@ -476,18 +560,20 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
               </div>
 
               <div className="grid grid-cols-7 text-center mb-1">
-                {['T2','T3','T4','T5','T6','T7','CN'].map(d => (
-                  <div key={d} className="text-[10px] font-bold text-slate-400 py-2 uppercase tracking-wider">{d}</div>
+                {formatDate(new Date(2025, 0, 6), { weekday: 'short' }) && ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((_, idx) => (
+                  <div key={idx} className="text-[10px] font-bold text-slate-400 py-2 uppercase tracking-wider">
+                    {formatDate(new Date(2025, 0, 6 + idx), { weekday: 'short' }).slice(0, 2)}
+                  </div>
                 ))}
               </div>
 
               <div className="grid grid-cols-7 gap-1">
                 {calDays.map((date, i) => {
                   if (!date) return <div key={i} />;
-                  const ds         = date.toLocaleDateString('vi-VN');
-                  const isSelected = ds === selDateStr;
-                  const isToday    = ds === todayStr;
-                  const hasTasks   = tasks.some(t => t.date === ds);
+                  const dateKey    = toDateKey(date);
+                  const isSelected = dateKey === selDateKey;
+                  const isToday    = dateKey === todayKey;
+                  const hasTasks   = tasks.some(t => t.dateKey === dateKey);
                   return (
                     <button key={i} onClick={() => setSelDate(date)}
                       className={`aspect-square flex flex-col items-center justify-center rounded-xl text-sm font-medium transition-all duration-200
@@ -505,7 +591,7 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
             <div className="lg:col-span-2 glass rounded-3xl p-6 flex flex-col shadow-sm min-h-[450px]">
               <div className="mb-5">
                 <p className="text-[11px] font-bold text-sky-500 uppercase tracking-[2px]">
-                  {selDate.toLocaleDateString('vi-VN', { weekday: 'long' })}
+                  {formatDate(selDate, { weekday: 'long' })}
                 </p>
                 <h2 className="syne text-2xl font-bold text-[#0A1628]">
                   {selDate.getDate()} / {selDate.getMonth() + 1}
@@ -515,7 +601,7 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
               {/* Add task */}
               <form onSubmit={addTask} className="flex gap-2 mb-4">
                 <input value={newTask.title} onChange={e => setNewTask({ ...newTask, title: e.target.value })}
-                  placeholder="Thêm công việc..."
+                  placeholder={t.addTask + '...'}
                   className="flex-1 px-3 py-2.5 bg-sky-50/60 border border-sky-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400 transition-all min-w-0 placeholder:text-slate-400" />
                 <input type="time" value={newTask.time} onChange={e => setNewTask({ ...newTask, time: e.target.value })}
                   className="w-[80px] px-2 py-2.5 bg-sky-50/60 border border-sky-100 rounded-xl text-[13px] focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400 transition-all text-slate-600 shrink-0" />
@@ -537,7 +623,7 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
                       {task.completed && <Check size={11} strokeWidth={3.5} className="text-white" />}
                     </button>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium truncate transition-all ${task.completed ? 'strike text-slate-400' : 'text-slate-800'}`}>{task.task}</p>
+                      <p className={`text-sm font-medium truncate transition-all ${task.completed ? 'strike text-slate-400' : 'text-slate-800'}`}>{getTaskTitle(task)}</p>
                     </div>
                     <span className="text-[11px] font-semibold text-slate-400 shrink-0">{task.time}</span>
                     <button onClick={() => deleteTask(task.id)}
@@ -548,7 +634,7 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
                 )) : (
                   <div className="flex flex-col items-center justify-center text-center py-12 opacity-40">
                     <CalIcon size={36} strokeWidth={1} className="text-slate-300 mb-3" />
-                    <p className="text-sm text-slate-500 font-medium">Ngày trống</p>
+                    <p className="text-sm text-slate-500 font-medium">{t.emptyDay}</p>
                   </div>
                 )}
               </div>
@@ -563,11 +649,11 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
             {/* Category sidebar */}
             <div className="lg:col-span-1">
               <div className="glass rounded-3xl p-5 shadow-sm sticky top-5">
-                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[2.5px] mb-3">Danh mục</h3>
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[2.5px] mb-3">{t.categories}</h3>
                 <div className="space-y-1 mb-4">
-                  {['Tất cả', ...categories].map(cat => {
+                  {['all', ...categories].map(cat => {
                     const cc    = catColor(cat);
-                    const count = cat === 'Tất cả' ? notes.length : notes.filter(n => n.category === cat).length;
+                    const count = cat === 'all' ? notes.length : notes.filter(n => n.category === cat).length;
                     const active = filterCat === cat;
                     return (
                       <div key={cat} onClick={() => setFilterCat(cat)}
@@ -575,12 +661,12 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
                           ${active ? 'text-white' : 'text-slate-600 hover:bg-sky-50/70'}`}
                         style={active ? { background: 'linear-gradient(90deg, #0A1628, #0F2A5F)' } : {}}>
                         <div className="flex items-center gap-2.5">
-                          {cat !== 'Tất cả' && <span className={`w-2 h-2 rounded-full shrink-0 ${active ? 'bg-sky-300' : cc.dot}`} />}
-                          <span className="text-sm font-medium">{cat}</span>
+                          {cat !== 'all' && <span className={`w-2 h-2 rounded-full shrink-0 ${active ? 'bg-sky-300' : cc.dot}`} />}
+                          <span className="text-sm font-medium">{cat === 'all' ? t.allFilter : categoryLabel(cat)}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
                           <span className={`text-xs font-bold ${active ? 'text-sky-300' : 'text-slate-400'}`}>{count}</span>
-                          {cat !== 'Tất cả' && cat !== 'Chung' && !active && (
+                          {cat !== 'all' && cat !== 'general' && !active && (
                             <button onClick={e => { e.stopPropagation(); removeCategory(cat); }}
                               className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 transition-all">
                               <X size={12} />
@@ -594,7 +680,7 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
                 <div className="border-t border-sky-100 pt-3 flex gap-1.5">
                   <input value={newCatInput} onChange={e => setNewCatInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && addCategory()}
-                    placeholder="Thêm danh mục..."
+                    placeholder={t.addCategory}
                     className="flex-1 px-2.5 py-2 bg-sky-50/60 border border-sky-100 rounded-lg text-xs font-medium focus:outline-none focus:border-sky-400 transition-all placeholder:text-slate-400" />
                   <button onClick={addCategory}
                     className="w-8 h-8 text-white rounded-lg flex items-center justify-center transition-all active:scale-90"
@@ -610,24 +696,24 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
               {/* Add note form */}
               <div className="glass rounded-3xl p-6 shadow-sm focus-within:ring-2 focus-within:ring-sky-400/25 transition-all">
                 <input value={newNote.title} onChange={e => setNewNote({ ...newNote, title: e.target.value })}
-                  placeholder="Tiêu đề tài liệu..."
+                  placeholder={t.docTitle}
                   className="syne w-full bg-transparent text-xl font-bold text-[#0A1628] placeholder:text-slate-300 focus:outline-none mb-3" />
                 <div className="flex items-center gap-3 mb-3">
                   <select value={newNote.category} onChange={e => setNewNote({ ...newNote, category: e.target.value })}
                     className="text-xs font-bold px-2.5 py-1.5 bg-sky-50 text-sky-700 border border-sky-100 rounded-lg focus:outline-none cursor-pointer">
-                    {categories.map(c => <option key={c}>{c}</option>)}
+                    {categories.map(c => <option key={c} value={c}>{categoryLabel(c)}</option>)}
                   </select>
-                  <span className="text-xs text-slate-400 font-medium">{selDate.toLocaleDateString('vi-VN')}</span>
+                  <span className="text-xs text-slate-400 font-medium">{formatDate(selDate)}</span>
                 </div>
                 <textarea value={newNote.content} onChange={e => setNewNote({ ...newNote, content: e.target.value })}
-                  placeholder="Nội dung kiến thức..."
+                  placeholder={t.contentPlaceholder}
                   rows={3}
                   className="w-full bg-transparent resize-none text-sm text-slate-600 placeholder:text-slate-300 focus:outline-none leading-relaxed scroll" />
                 <div className="flex justify-end pt-4 border-t border-sky-50">
                   <button onClick={addNote} disabled={!newNote.title.trim()}
                     className="px-5 py-2.5 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
                     style={{ background: 'linear-gradient(135deg, #0A1628, #0F2A5F)' }}>
-                    Lưu tài liệu
+                    {t.saveDoc}
                   </button>
                 </div>
               </div>
@@ -640,16 +726,16 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
                     <div key={note.id}
                       className="break-inside-avoid glass rounded-2xl p-5 hover:border-sky-300 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group">
                       <div className="flex items-start justify-between mb-3">
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md ${cc.pill}`}>{note.category}</span>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md ${cc.pill}`}>{categoryLabel(note.category)}</span>
                         <button onClick={() => deleteNote(note.id)}
                           className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-red-400 transition-all rounded-lg hover:bg-red-50">
                           <Trash2 size={14} />
                         </button>
                       </div>
-                      <h3 className="syne text-base font-bold text-slate-900 mb-2 leading-snug">{note.title}</h3>
-                      <p className="text-slate-500 text-sm leading-relaxed whitespace-pre-wrap">{note.content}</p>
+                      <h3 className="syne text-base font-bold text-slate-900 mb-2 leading-snug">{getNoteTitle(note)}</h3>
+                      <p className="text-slate-500 text-sm leading-relaxed whitespace-pre-wrap">{getNoteContent(note)}</p>
                       <div className="flex items-center gap-1.5 mt-4 pt-3 border-t border-sky-50/80 text-[11px] text-slate-400 font-medium">
-                        <Clock size={11} /> {note.date}
+                        <Clock size={11} /> {formatDateFromKey(note.dateKey)}
                       </div>
                     </div>
                   );
@@ -659,8 +745,8 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
               {displayedNotes.length === 0 && (
                 <div className="text-center py-20 opacity-40">
                   <BookOpen size={40} strokeWidth={1} className="text-slate-300 mx-auto mb-3" />
-                  <p className="text-slate-500 font-semibold">Chưa có tài liệu</p>
-                  <p className="text-xs text-slate-400 mt-1">Thêm ghi chú để bắt đầu</p>
+                  <p className="text-slate-500 font-semibold">{t.noDocsShort}</p>
+                  <p className="text-xs text-slate-400 mt-1">{t.startByAdding}</p>
                 </div>
               )}
             </div>
@@ -684,7 +770,7 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
             </div>
             <div className="flex-1">
               <p className="syne text-sm font-bold">BlueStudy AI</p>
-              <p className="text-[10px] text-sky-300">Trợ lý học tập · Powered by Claude</p>
+              <p className="text-[10px] text-sky-300">{t.aiHelper}</p>
             </div>
             <button onClick={() => setAiOpen(false)}
               className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
@@ -730,7 +816,7 @@ Trả về JSON thuần (KHÔNG backtick, KHÔNG markdown):
           <div className="p-3 border-t border-sky-100/50 bg-white">
             <form onSubmit={handleAI} className="flex gap-2">
               <input value={aiInput} onChange={e => setAiInput(e.target.value)} disabled={aiLoading}
-                placeholder="Nhờ AI thêm lịch, ghi chú..."
+                placeholder={t.aiPlaceholder}
                 className="flex-1 px-3 py-2.5 bg-sky-50/60 border border-sky-100 rounded-xl text-sm focus:outline-none focus:border-sky-400 transition-all placeholder:text-slate-400" />
               <button type="submit" disabled={!aiInput.trim() || aiLoading}
                 className="w-9 h-9 text-white rounded-xl flex items-center justify-center shrink-0 transition-all active:scale-90 disabled:opacity-40"
