@@ -1,5 +1,9 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
+const RAW_API_BASE = String(import.meta.env.VITE_API_BASE || '').trim();
+const API_BASE = RAW_API_BASE || (import.meta.env.DEV ? 'http://localhost:4000' : '');
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 12000);
+const API_BASE_SETUP_ERROR = 'Chua cau hinh VITE_API_BASE tren Vercel. Vui long set VITE_API_BASE=https://YOUR_BACKEND_URL va redeploy frontend.';
+
+export const IS_API_BASE_CONFIGURED = Boolean(API_BASE);
 
 function normalizeBase(base) {
   return String(base).trim().replace(/\/+$/, '');
@@ -28,10 +32,16 @@ function getNetworkErrorMessage(error) {
   if (error?.name === 'AbortError') {
     return 'Backend phan hoi qua cham. Vui long thu lai.';
   }
-  return 'Khong ket noi duoc backend. Hay chay npm run dev de khoi dong ca frontend va backend.';
+  return import.meta.env.PROD
+    ? 'Khong ket noi duoc backend. Kiem tra backend deployment va bien VITE_API_BASE.'
+    : 'Khong ket noi duoc backend. Hay chay npm run dev de khoi dong ca frontend va backend.';
 }
 
 export async function apiRequest(path, options = {}, token) {
+  if (!IS_API_BASE_CONFIGURED) {
+    throw new Error(API_BASE_SETUP_ERROR);
+  }
+
   const method = String(options.method || 'GET').toUpperCase();
   const url = withBase(path);
   const maxAttempts = method === 'GET' ? 2 : 1;

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { authApi } from './api';
+import { authApi, IS_API_BASE_CONFIGURED } from './api';
 
 const boxStyle = {
   background: 'linear-gradient(140deg, #08142A 0%, #0E2B60 100%)',
@@ -13,6 +13,11 @@ export default function AuthScreen({ onAuthSuccess }) {
   const [backendReady, setBackendReady] = useState(true);
 
   useEffect(() => {
+    if (!IS_API_BASE_CONFIGURED) {
+      setBackendReady(false);
+      return undefined;
+    }
+
     let mounted = true;
     let timerId;
 
@@ -122,7 +127,9 @@ export default function AuthScreen({ onAuthSuccess }) {
             {error && <p className="text-sm text-red-500">{error}</p>}
             {!backendReady && (
               <p className="text-sm text-amber-700 bg-amber-50 rounded-xl px-3 py-2">
-                Backend dang tat. Hay chay npm run dev de bat ca frontend va backend.
+                {IS_API_BASE_CONFIGURED
+                  ? 'Backend dang tat. Hay chay npm run dev de bat ca frontend va backend.'
+                  : 'Chua cau hinh VITE_API_BASE tren Vercel. Vui long set VITE_API_BASE=https://YOUR_BACKEND_URL va redeploy frontend.'}
               </p>
             )}
 
