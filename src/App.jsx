@@ -3,7 +3,7 @@ import {
   LayoutDashboard, BookOpen, Calendar as CalIcon, Plus, Trash2,
   ChevronRight, ChevronLeft, Clock, Search, Tag, X, Check,
   Sparkles, Bot, Send, User, Target, Zap, CheckCircle2,
-  TrendingUp, Flame, Languages
+  TrendingUp, Flame, Languages, Sun, Moon
 } from 'lucide-react';
 import {
   LANG_META,
@@ -68,11 +68,51 @@ const STYLES = `
       radial-gradient(ellipse 40% 40% at 60% 40%,  #E0F2FE44 0%, transparent 70%);
   }
 
+  .theme-dark {
+    --bg: #020617;
+  }
+
+  .theme-dark .mesh-bg {
+    background-image:
+      radial-gradient(ellipse 60% 50% at 20% 0%,   #1E3A8A66 0%, transparent 70%),
+      radial-gradient(ellipse 50% 40% at 90% 80%,  #0F766E55 0%, transparent 60%),
+      radial-gradient(ellipse 40% 40% at 60% 40%,  #1E293B66 0%, transparent 70%);
+  }
+
   /* Glass card */
   .glass {
     background: rgba(255,255,255,0.78);
     backdrop-filter: blur(18px);
     border: 1px solid rgba(186,230,253,0.55);
+  }
+
+  .theme-dark .glass {
+    background: rgba(15,23,42,0.72);
+    border: 1px solid rgba(56,189,248,0.24);
+  }
+
+  .theme-dark [class*="text-[#0A1628]"] { color: #E2E8F0 !important; }
+  .theme-dark .text-slate-900 { color: #E2E8F0 !important; }
+  .theme-dark .text-slate-800 { color: #E2E8F0 !important; }
+  .theme-dark .text-slate-700 { color: #CBD5E1 !important; }
+  .theme-dark .text-slate-600 { color: #CBD5E1 !important; }
+  .theme-dark .text-slate-500 { color: #94A3B8 !important; }
+  .theme-dark .text-slate-400 { color: #94A3B8 !important; }
+  .theme-dark .border-sky-100 { border-color: rgba(56,189,248,0.25) !important; }
+  .theme-dark [class*="bg-white/"],
+  .theme-dark .bg-white,
+  .theme-dark [class*="bg-sky-50"],
+  .theme-dark [class*="bg-slate-50/"] {
+    background-color: rgba(15,23,42,0.6) !important;
+  }
+  .theme-dark input,
+  .theme-dark textarea,
+  .theme-dark select {
+    color: #E2E8F0;
+  }
+  .theme-dark input::placeholder,
+  .theme-dark textarea::placeholder {
+    color: #94A3B8;
   }
 
   /* Nav active glow */
@@ -86,6 +126,13 @@ const STYLES = `
 `;
 
 const normalizeCategory = (value) => CATEGORY_ALIASES[value] || value;
+
+const getTimeGreeting = (hour, text) => {
+  if (hour >= 5 && hour < 11) return text.greetingMorning || text.greeting;
+  if (hour >= 11 && hour < 14) return text.greetingNoon || text.greeting;
+  if (hour >= 14 && hour < 18) return text.greetingAfternoon || text.greeting;
+  return text.greetingEvening || text.greeting;
+};
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const toDateKey = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
@@ -146,6 +193,8 @@ export default function App() {
     }
   });
   const [authReady, setAuthReady]       = useState(false);
+  const [theme, setTheme]               = useState(() => localStorage.getItem('bs3-theme') === 'dark' ? 'dark' : 'light');
+  const [now, setNow]                   = useState(() => new Date());
   const [lang, setLang]                 = useState('vi');
   const [tab, setTab]                   = useState('dashboard');
   const [curMonth, setCurMonth]         = useState(new Date());
@@ -166,7 +215,11 @@ export default function App() {
   const getNoteContent = (note) => note.seedKey ? seedNoteText(note.seedKey)?.content || note.content || '' : note.content || '';
   const getTaskTitle = (task) => task.seedKey ? seedTaskText(task.seedKey) || task.task || '' : task.task || '';
 
-  const today   = new Date();
+  const currentHour = now.getHours();
+  const timeGreeting = getTimeGreeting(currentHour, t);
+  const currentTimeLabel = now.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  const today   = now;
   const todayKey = toDateKey(today);
 
   const [notes, setNotes] = useState(
@@ -251,6 +304,15 @@ export default function App() {
       return prev;
     });
   }, [t.aiWelcome]);
+
+  useEffect(() => {
+    const tick = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(tick);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('bs3-theme', theme);
+  }, [theme]);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatHistory, aiOpen]);
 
@@ -363,6 +425,8 @@ export default function App() {
     return r;
   })();
 
+  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+
   /* ─── AI (Anthropic) ─── */
   const handleAI = async (e) => {
     e.preventDefault();
@@ -443,7 +507,7 @@ Danh mục: ${categories.join(', ')}
   }
 
   return (
-    <div className="mesh-bg min-h-screen text-slate-800 md:pl-[84px] pb-24 md:pb-0 relative overflow-x-hidden">
+    <div className={`mesh-bg ${theme === 'dark' ? 'theme-dark text-slate-100' : 'theme-light text-slate-800'} min-h-screen md:pl-[84px] pb-24 md:pb-0 relative overflow-x-hidden`}>
       <style>{FONTS + STYLES}</style>
 
       {/* ── SIDEBAR ── */}
@@ -505,14 +569,26 @@ Danh mục: ${categories.join(', ')}
               {formatDate(today, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
             <h1 className="syne text-2xl md:text-[2rem] font-bold text-[#0A1628] leading-tight">
-              {tab === 'dashboard' ? t.greeting : tab === 'calendar' ? t.schedule : t.docs}
+              {tab === 'dashboard' ? timeGreeting : tab === 'calendar' ? t.schedule : t.docs}
             </h1>
           </div>
           <div className="flex items-center gap-2 flex-wrap sm:justify-end">
+            <div className="px-3 py-2 glass rounded-xl min-w-[132px]">
+              <p className="text-[11px] leading-tight text-slate-500 font-semibold">{t.currentTime}</p>
+              <p className="text-xs text-slate-700 font-bold">{currentTimeLabel}</p>
+            </div>
             <div className="px-3 py-2 glass rounded-xl">
               <p className="text-[11px] leading-tight text-slate-500 font-semibold">{authUser.name}</p>
               <p className="text-[10px] text-slate-400">{authUser.email}</p>
             </div>
+            <button
+              onClick={toggleTheme}
+              aria-label={t.theme}
+              className="px-3 py-2 glass rounded-xl text-xs font-semibold inline-flex items-center gap-1.5"
+            >
+              {theme === 'dark' ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-indigo-500" />}
+              {t.theme}: {theme === 'dark' ? t.dark : t.light}
+            </button>
             <Languages size={16} className="text-sky-500" />
             <select
               value={lang}
