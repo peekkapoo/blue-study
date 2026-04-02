@@ -9,13 +9,25 @@ import { getDb, defaultUserPayload } from './db.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
+const FRONTEND_ORIGINS = String(process.env.FRONTEND_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID || undefined);
 
-app.use(cors({ origin: FRONTEND_ORIGIN, credentials: true }));
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || FRONTEND_ORIGINS.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error('Origin not allowed by CORS'));
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '1mb' }));
 
 function sanitizeUser(user) {
@@ -196,6 +208,10 @@ app.put('/api/user-data', authRequired, async (req, res) => {
 });
 
 app.use((err, _req, res, _next) => {
+  if (err?.message === 'Origin not allowed by CORS') {
+    res.status(403).json({ message: 'Origin not allowed by CORS' });
+    return;
+  }
   console.error(err);
   res.status(500).json({ message: 'Internal server error' });
 });

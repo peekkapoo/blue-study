@@ -14,6 +14,7 @@ export default function AuthScreen({ onAuthSuccess }) {
 
   useEffect(() => {
     let mounted = true;
+    let timerId;
 
     const bootstrap = async () => {
       try {
@@ -24,11 +25,15 @@ export default function AuthScreen({ onAuthSuccess }) {
         if (!mounted) return;
         setBackendReady(false);
       }
+
+      if (!mounted) return;
+      timerId = setTimeout(bootstrap, 3000);
     };
 
     bootstrap();
     return () => {
       mounted = false;
+      clearTimeout(timerId);
     };
   }, []);
 
@@ -65,8 +70,8 @@ export default function AuthScreen({ onAuthSuccess }) {
           </p>
           <ul className="mt-6 space-y-2 text-sm text-sky-100">
             <li>Dang ky / Dang nhap bang email</li>
-            <li>Dang nhap nhanh voi Google</li>
-            <li>Luu va tai su lieu hoc tap theo user</li>
+            <li>Xac thuc backend theo JWT</li>
+            <li>Dong bo du lieu hoc tap theo user</li>
           </ul>
         </section>
 
