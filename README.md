@@ -1,16 +1,57 @@
-# React + Vite
+# Blue Study
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Blue Study now includes a full auth backend:
 
-Currently, two official plugins are available:
+- Register / login with email + password
+- Login with Google (Google Identity Services)
+- JWT session handling
+- Per-user data storage (notes, tasks, categories, language)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 1) Install
 
-## React Compiler
+```bash
+npm install
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 2) Environment variables
 
-## Expanding the ESLint configuration
+Create `.env` from `.env.example` and fill values:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```env
+PORT=4000
+FRONTEND_ORIGIN=http://localhost:5173
+JWT_SECRET=replace_with_a_long_random_secret
+GOOGLE_CLIENT_ID=your_google_web_client_id.apps.googleusercontent.com
+VITE_GOOGLE_CLIENT_ID=your_google_web_client_id.apps.googleusercontent.com
+```
+
+Notes:
+
+- `GOOGLE_CLIENT_ID` is used by backend token verification.
+- `VITE_GOOGLE_CLIENT_ID` is used by frontend Google button rendering.
+
+## 3) Run project
+
+Run frontend + backend together:
+
+```bash
+npm run dev:full
+```
+
+Or run separately:
+
+```bash
+npm run dev:server
+npm run dev
+```
+
+## 4) API summary
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/google`
+- `GET /api/auth/me`
+- `GET /api/user-data`
+- `PUT /api/user-data`
+
+User data is persisted in `server/data/db.json`.

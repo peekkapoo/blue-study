@@ -1,0 +1,172 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { authApi } from './api';
+
+const boxStyle = {
+  background: 'linear-gradient(140deg, #08142A 0%, #0E2B60 100%)',
+};
+
+export default function AuthScreen({ onAuthSuccess }) {
+  const [mode, setMode] = useState('login');
+  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const googleRef = useRef(null);
+
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+  useEffect(() => {
+    if (!googleClientId) return;
+
+    const loadGoogle = () => {
+      if (!window.google?.accounts?.id || !googleRef.current) return;
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: async (resp) => {
+          try {
+            setLoading(true);
+            setError('');
+            const data = await authApi.google(resp.credential);
+            onAuthSuccess(data.token, data.user);
+          } catch (e) {
+            setError(e.message || 'Google sign-in failed');
+          } finally {
+            setLoading(false);
+          }
+        },
+      });
+      googleRef.current.innerHTML = '';
+      window.google.accounts.id.renderButton(googleRef.current, {
+        theme: 'outline',
+        size: 'large',
+        shape: 'pill',
+        text: 'signin_with',
+      });
+    };
+
+    const existing = document.querySelector('script[data-google-gsi="1"]');
+    if (existing) {
+      loadGoogle();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.dataset.googleGsi = '1';
+    script.onload = loadGoogle;
+    document.body.appendChild(script);
+  }, [googleClientId, onAuthSuccess]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    try {
+      setLoading(true);
+      const payload = {
+        email: form.email.trim(),
+        password: form.password,
+      };
+      const data = mode === 'register'
+        ? await authApi.register({ ...payload, name: form.name.trim() })
+        : await authApi.login(payload);
+
+      onAuthSuccess(data.token, data.user);
+    } catch (err) {
+      setError(err.message || 'Authentication failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen px-4 py-10" style={{ background: 'linear-gradient(180deg, #E0F2FE 0%, #EFF6FF 100%)' }}>
+      <div className="max-w-5xl mx-auto grid lg:grid-cols-2 gap-6 items-stretch">
+        <section className="rounded-3xl p-8 text-white shadow-2xl" style={boxStyle}>
+          <p className="text-xs uppercase tracking-[3px] text-sky-300 font-semibold">Blue Study</p>
+          <h1 className="text-4xl mt-4 font-bold leading-tight">Study smarter with one secure account</h1>
+          <p className="mt-5 text-sky-100 text-sm leading-relaxed">
+            Tao tai khoan de luu toan bo ghi chu, lich hoc va thiet lap cua ban. Du lieu duoc dong bo theo tung user.
+          </p>
+          <ul className="mt-6 space-y-2 text-sm text-sky-100">
+            <li>Dang ky / Dang nhap bang email</li>
+            <li>Dang nhap nhanh voi Google</li>
+            <li>Luu va tai su lieu hoc tap theo user</li>
+          </ul>
+        </section>
+
+        <section className="bg-white rounded-3xl p-8 shadow-xl border border-sky-100">
+          <div className="flex gap-2 mb-6 bg-slate-100 p-1 rounded-xl">
+            <button
+              onClick={() => setMode('login')}
+              className={`flex-1 py-2.5 text-sm rounded-lg font-semibold transition ${mode === 'login' ? 'bg-white text-sky-700 shadow' : 'text-slate-500'}`}
+            >
+              Dang nhap
+            </button>
+            <button
+              onClick={() => setMode('register')}
+              className={`flex-1 py-2.5 text-sm rounded-lg font-semibold transition ${mode === 'register' ? 'bg-white text-sky-700 shadow' : 'text-slate-500'}`}
+            >
+              Dang ky
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {mode === 'register' && (
+              <input
+                value={form.name}
+                onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Ten hien thi"
+                required
+                className="w-full px-4 py-3 rounded-xl border border-sky-100 bg-sky-50/40 focus:outline-none focus:ring-2 focus:ring-sky-200"
+              />
+            )}
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+              placeholder="Email"
+              required
+              className="w-full px-4 py-3 rounded-xl border border-sky-100 bg-sky-50/40 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            />
+            <input
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
+              placeholder="Mat khau (toi thieu 6 ky tu)"
+              required
+              minLength={6}
+              className="w-full px-4 py-3 rounded-xl border border-sky-100 bg-sky-50/40 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            />
+
+            {error && <p className="text-sm text-red-500">{error}</p>}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 rounded-xl text-white font-semibold disabled:opacity-60"
+              style={{ background: 'linear-gradient(135deg, #0EA5E9 0%, #1D4ED8 100%)' }}
+            >
+              {loading ? 'Dang xu ly...' : mode === 'login' ? 'Dang nhap' : 'Tao tai khoan'}
+            </button>
+          </form>
+
+          <div className="my-5 flex items-center gap-3">
+            <div className="h-px bg-slate-200 flex-1" />
+            <span className="text-xs text-slate-400">or</span>
+            <div className="h-px bg-slate-200 flex-1" />
+          </div>
+
+          {googleClientId ? (
+            <div ref={googleRef} className="flex justify-center" />
+          ) : (
+            <p className="text-xs text-amber-600 bg-amber-50 p-3 rounded-xl">
+              Chua cai VITE_GOOGLE_CLIENT_ID trong .env nen dang nhap Google tam thoi chua hien thi.
+            </p>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}

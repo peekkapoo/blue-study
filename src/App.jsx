@@ -16,6 +16,8 @@ import {
   SEED_NOTE_TEXTS,
   SEED_TASK_TEXTS,
 } from './App.i18n';
+import AuthScreen from './AuthScreen';
+import { authApi, userDataApi } from './api';
 
 /* ─── FONTS & GLOBAL CSS ─── */
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');`;
@@ -109,6 +111,9 @@ const normalizeDateKey = (input, fallbackDate = new Date()) => {
   return toDateKey(fallbackDate);
 };
 
+const AUTH_TOKEN_KEY = 'bs3-auth-token';
+const AUTH_USER_KEY = 'bs3-auth-user';
+
 /* ─── CATEGORY COLOUR MAP ─── */
 const CAT_COLORS = {
   general: { pill: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500', icon: 'bg-blue-50 text-blue-600' },
@@ -132,6 +137,15 @@ const Stat = ({ label, value, sub }) => (
 ══════════════════════════════════════════════ */
 export default function App() {
   /* ─── State ─── */
+  const [authToken, setAuthToken]       = useState(localStorage.getItem(AUTH_TOKEN_KEY) || '');
+  const [authUser, setAuthUser]         = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(AUTH_USER_KEY) || 'null');
+    } catch {
+      return null;
+    }
+  });
+  const [authReady, setAuthReady]       = useState(false);
   const [lang, setLang]                 = useState('vi');
   const [tab, setTab]                   = useState('dashboard');
   const [curMonth, setCurMonth]         = useState(new Date());
@@ -173,6 +187,59 @@ export default function App() {
     { role: 'ai', content: t.aiWelcome }
   ]);
   const chatEndRef = useRef(null);
+  const userDataLoadedRef = useRef(false);
+
+  const hydrateUserData = async (token) => {
+    const { data } = await userDataApi.get(token);
+    if (data) {
+      setNotes(Array.isArray(data.notes) ? data.notes : []);
+      setTasks(Array.isArray(data.tasks) ? data.tasks : []);
+      setCategories(Array.isArray(data.categories) && data.categories.length ? data.categories : DEFAULT_CATEGORIES);
+      setLang(typeof data.lang === 'string' ? data.lang : 'vi');
+    }
+    userDataLoadedRef.current = true;
+  };
+
+  const onAuthSuccess = async (token, user) => {
+    setAuthToken(token);
+    setAuthUser(user);
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+    await hydrateUserData(token);
+    setAuthReady(true);
+  };
+
+  const logout = () => {
+    setAuthToken('');
+    setAuthUser(null);
+    setAuthReady(true);
+    userDataLoadedRef.current = false;
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_USER_KEY);
+  };
+
+  useEffect(() => {
+    const bootstrapAuth = async () => {
+      if (!authToken) {
+        setAuthReady(true);
+        return;
+      }
+      try {
+        const res = await authApi.me(authToken);
+        setAuthUser(res.user);
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(res.user));
+        await hydrateUserData(authToken);
+      } catch {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+        localStorage.removeItem(AUTH_USER_KEY);
+        setAuthToken('');
+        setAuthUser(null);
+      } finally {
+        setAuthReady(true);
+      }
+    };
+    bootstrapAuth();
+  }, [authToken]);
 
   useEffect(() => {
     setChatHistory(prev => {
@@ -185,6 +252,7 @@ export default function App() {
 
   /* ─── Persistence ─── */
   useEffect(() => {
+    if (authToken) return;
     try {
       const l = localStorage.getItem('bs3-lang');
       const n = localStorage.getItem('bs3-notes');
@@ -210,12 +278,34 @@ export default function App() {
         const p = JSON.parse(c).map(normalizeCategory);
         if (p.length) setCategories(p);
       }
-    } catch {}
-  }, []);
-  useEffect(() => { localStorage.setItem('bs3-notes', JSON.stringify(notes)); }, [notes]);
-  useEffect(() => { localStorage.setItem('bs3-tasks', JSON.stringify(tasks)); }, [tasks]);
-  useEffect(() => { localStorage.setItem('bs3-cats',  JSON.stringify(categories)); }, [categories]);
-  useEffect(() => { localStorage.setItem('bs3-lang', lang); }, [lang]);
+    } catch {
+      return undefined;
+    }
+  }, [authToken]);
+  useEffect(() => {
+    if (authToken) return;
+    localStorage.setItem('bs3-notes', JSON.stringify(notes));
+  }, [notes, authToken]);
+  useEffect(() => {
+    if (authToken) return;
+    localStorage.setItem('bs3-tasks', JSON.stringify(tasks));
+  }, [tasks, authToken]);
+  useEffect(() => {
+    if (authToken) return;
+    localStorage.setItem('bs3-cats', JSON.stringify(categories));
+  }, [categories, authToken]);
+  useEffect(() => {
+    if (authToken) return;
+    localStorage.setItem('bs3-lang', lang);
+  }, [lang, authToken]);
+
+  useEffect(() => {
+    if (!authToken || !authReady || !userDataLoadedRef.current) return;
+    const timer = setTimeout(() => {
+      userDataApi.save(authToken, { notes, tasks, categories, lang }).catch(() => {});
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [authToken, authReady, notes, tasks, categories, lang]);
 
   /* ─── Calendar ─── */
   const calDays = useMemo(() => {
@@ -260,14 +350,14 @@ export default function App() {
   const filteredTasks   = tasks.filter(t => t.dateKey === selDateKey);
   const nextTask        = tasks.find(t => !t.completed);
 
-  const displayedNotes = useMemo(() => {
+  const displayedNotes = (() => {
     let r = filterCat === 'all' ? notes : notes.filter(n => n.category === filterCat);
     if (searchQ.trim()) r = r.filter(n =>
       getNoteTitle(n).toLowerCase().includes(searchQ.toLowerCase()) ||
       getNoteContent(n).toLowerCase().includes(searchQ.toLowerCase())
     );
     return r;
-  }, [notes, filterCat, searchQ, lang]);
+  })();
 
   /* ─── AI (Anthropic) ─── */
   const handleAI = async (e) => {
@@ -334,6 +424,20 @@ Danh mục: ${categories.join(', ')}
   /* ════════════════════════════════
      RENDER
   ════════════════════════════════ */
+  if (!authReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(180deg, #E0F2FE 0%, #EFF6FF 100%)' }}>
+        <div className="px-5 py-3 rounded-2xl bg-white border border-sky-100 text-slate-600 font-semibold shadow-sm">
+          Dang tai phien dang nhap...
+        </div>
+      </div>
+    );
+  }
+
+  if (!authToken || !authUser) {
+    return <AuthScreen onAuthSuccess={onAuthSuccess} />;
+  }
+
   return (
     <div className="mesh-bg min-h-screen text-slate-800 md:pl-[84px] pb-24 md:pb-0 relative overflow-x-hidden">
       <style>{FONTS + STYLES}</style>
@@ -363,19 +467,21 @@ Danh mục: ${categories.join(', ')}
 
         {/* Nav buttons */}
         <div className="flex md:flex-col gap-1.5 items-center">
-          {NAV.map(({ id, icon: Icon, label }) => (
-            <button key={id} onClick={() => setTab(id)}
-              title={label}
+          {NAV.map((item) => {
+            const IconCmp = item.icon;
+            return (
+            <button key={item.id} onClick={() => setTab(item.id)}
+              title={item.label}
               className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all duration-200 group relative
-                ${tab === id ? 'nav-active text-white' : 'text-slate-400 hover:bg-white/10 hover:text-sky-300'}`}>
-              <Icon size={19} strokeWidth={tab === id ? 2.5 : 2} />
-              <span className="text-[9px] mt-1 font-semibold hidden md:block tracking-wide">{label.split(' ')[0]}</span>
+                ${tab === item.id ? 'nav-active text-white' : 'text-slate-400 hover:bg-white/10 hover:text-sky-300'}`}>
+              <IconCmp size={19} strokeWidth={tab === item.id ? 2.5 : 2} />
+              <span className="text-[9px] mt-1 font-semibold hidden md:block tracking-wide">{item.label.split(' ')[0]}</span>
               {/* Desktop tooltip */}
               <span className="absolute left-[calc(100%+10px)] px-2.5 py-1 bg-[#0A1628] text-white text-xs rounded-lg
                 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap hidden md:block
-                shadow-xl border border-white/10 pointer-events-none">{label}</span>
+                shadow-xl border border-white/10 pointer-events-none">{item.label}</span>
             </button>
-          ))}
+          )})}
         </div>
 
         {/* Avatar */}
@@ -398,7 +504,11 @@ Danh mục: ${categories.join(', ')}
               {tab === 'dashboard' ? t.greeting : tab === 'calendar' ? t.schedule : t.docs}
             </h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap sm:justify-end">
+            <div className="px-3 py-2 glass rounded-xl">
+              <p className="text-[11px] leading-tight text-slate-500 font-semibold">{authUser.name}</p>
+              <p className="text-[10px] text-slate-400">{authUser.email}</p>
+            </div>
             <Languages size={16} className="text-sky-500" />
             <select
               value={lang}
@@ -408,6 +518,13 @@ Danh mục: ${categories.join(', ')}
             >
               {Object.entries(LANG_META).map(([k, v]) => <option key={k} value={k}>{v.flag} {v.name}</option>)}
             </select>
+            <button
+              onClick={logout}
+              className="px-3 py-2 rounded-xl text-xs font-bold text-white"
+              style={{ background: 'linear-gradient(135deg, #0EA5E9 0%, #1D4ED8 100%)' }}
+            >
+              Dang xuat
+            </button>
           </div>
           {tab === 'notes' && (
             <div className="relative">
@@ -549,11 +666,11 @@ Danh mục: ${categories.join(', ')}
                   {t.month} {curMonth.getMonth() + 1} &nbsp;·&nbsp; {curMonth.getFullYear()}
                 </h2>
                 <div className="flex gap-1">
-                  {[ChevronLeft, ChevronRight].map((Icon, i) => (
+                  {[ChevronLeft, ChevronRight].map((ArrowIcon, i) => (
                     <button key={i}
                       onClick={() => setCurMonth(new Date(curMonth.getFullYear(), curMonth.getMonth() + (i ? 1 : -1)))}
                       className="w-8 h-8 flex items-center justify-center text-slate-500 hover:bg-sky-100 hover:text-sky-600 rounded-xl transition-colors">
-                      <Icon size={17} />
+                      <ArrowIcon size={17} />
                     </button>
                   ))}
                 </div>
