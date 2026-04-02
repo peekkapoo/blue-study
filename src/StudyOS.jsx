@@ -316,7 +316,7 @@ export default function StudyOS() {
   const [authReady, setAuthReady] = useState(false);
   const [theme, setTheme] = useState(() => (localStorage.getItem('bs3-theme') === 'dark' ? 'dark' : 'light'));
   const [now, setNow] = useState(() => new Date());
-  const [lang, setLang] = useState('vi');
+  const [lang, setLang] = useState('en');
   const [view, setView] = useState('reflect');
 
   const [curMonth, setCurMonth] = useState(new Date());
@@ -328,8 +328,8 @@ export default function StudyOS() {
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [newCatInput, setNewCatInput] = useState('');
 
-  const t = UI_TEXT[lang] || UI_TEXT.vi;
-  const locale = LANG_META[lang]?.locale || 'vi-VN';
+  const t = UI_TEXT[lang] || UI_TEXT.en;
+  const locale = LANG_META[lang]?.locale || 'en-US';
   const formatDate = (date, options) => date.toLocaleDateString(locale, options);
   const formatDateFromKey = (dateKey, options) => formatDate(parseDateKey(dateKey), options);
   const formatDateTime = (iso) => {
@@ -339,8 +339,8 @@ export default function StudyOS() {
     return d.toLocaleString(locale, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
   };
   const categoryLabel = useCallback((cat) => (CATEGORY_LABELS[lang]?.[cat] || cat), [lang]);
-  const seedNoteText = useCallback((seedKey) => SEED_NOTE_TEXTS[seedKey]?.[lang] || SEED_NOTE_TEXTS[seedKey]?.vi, [lang]);
-  const seedTaskText = useCallback((seedKey) => SEED_TASK_TEXTS[seedKey]?.[lang] || SEED_TASK_TEXTS[seedKey]?.vi, [lang]);
+  const seedNoteText = useCallback((seedKey) => SEED_NOTE_TEXTS[seedKey]?.[lang] || SEED_NOTE_TEXTS[seedKey]?.en, [lang]);
+  const seedTaskText = useCallback((seedKey) => SEED_TASK_TEXTS[seedKey]?.[lang] || SEED_TASK_TEXTS[seedKey]?.en, [lang]);
   const getNoteTitle = useCallback((note) => note.seedKey ? seedNoteText(note.seedKey)?.title || note.title || '' : note.title || '', [seedNoteText]);
   const getNoteContent = useCallback((note) => note.seedKey ? seedNoteText(note.seedKey)?.content || note.content || '' : note.content || '', [seedNoteText]);
   const getTaskTitle = useCallback((task) => task.seedKey ? seedTaskText(task.seedKey) || task.task || '' : task.task || '', [seedTaskText]);
@@ -435,7 +435,7 @@ export default function StudyOS() {
     setNotes(Array.isArray(data.notes) ? data.notes.map((n) => normalizeNote(n, todayKey)) : []);
     setTasks(Array.isArray(data.tasks) ? data.tasks.map((task) => normalizeTask(task, todayKey)) : []);
     setCategories(Array.isArray(data.categories) && data.categories.length ? data.categories.map(normalizeCategory) : DEFAULT_CATEGORIES);
-    setLang(typeof data.lang === 'string' ? data.lang : 'vi');
+    setLang(typeof data.lang === 'string' ? data.lang : 'en');
     setGoals(Array.isArray(data.goals) ? data.goals : []);
     setStudySessions(Array.isArray(data.studySessions) ? data.studySessions : []);
     setRevisions(Array.isArray(data.revisions) ? data.revisions : []);

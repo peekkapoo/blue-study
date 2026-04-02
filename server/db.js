@@ -32,7 +32,7 @@ export const defaultUserPayload = {
   notes: [],
   tasks: [],
   categories: ['general', 'tech', 'language', 'skill'],
-  lang: 'vi',
+  lang: 'en',
   goals: [],
   studySessions: [],
   revisions: [],

@@ -56,7 +56,7 @@ function normalizeUserData(body = {}) {
     notes: ensureArray(body.notes),
     tasks: ensureArray(body.tasks),
     categories: ensureArray(body.categories),
-    lang: typeof body.lang === 'string' ? body.lang : 'vi',
+    lang: typeof body.lang === 'string' ? body.lang : 'en',
     goals: ensureArray(body.goals),
     studySessions: ensureArray(body.studySessions),
     revisions: ensureArray(body.revisions),
