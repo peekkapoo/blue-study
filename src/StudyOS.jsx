@@ -43,8 +43,11 @@ import {
 } from 'lucide-react';
 import {
   LANG_META,
+  DEFAULT_LANG,
+  DEFAULT_LOCALE,
   CATEGORY_LABELS,
-  UI_TEXT,
+  getUIText,
+  coerceLang,
   CATEGORY_ALIASES,
   DEFAULT_CATEGORIES,
   INITIAL_NOTE_SEEDS,
@@ -316,7 +319,7 @@ export default function StudyOS() {
   const [authReady, setAuthReady] = useState(false);
   const [theme, setTheme] = useState(() => (localStorage.getItem('bs3-theme') === 'dark' ? 'dark' : 'light'));
   const [now, setNow] = useState(() => new Date());
-  const [lang, setLang] = useState('en');
+  const [lang, setLang] = useState(DEFAULT_LANG);
   const [view, setView] = useState('reflect');
 
   const [curMonth, setCurMonth] = useState(new Date());
@@ -328,8 +331,8 @@ export default function StudyOS() {
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [newCatInput, setNewCatInput] = useState('');
 
-  const t = UI_TEXT[lang] || UI_TEXT.en;
-  const locale = LANG_META[lang]?.locale || 'en-US';
+  const t = getUIText(lang);
+  const locale = LANG_META[lang]?.locale || DEFAULT_LOCALE;
   const formatDate = (date, options) => date.toLocaleDateString(locale, options);
   const formatDateFromKey = (dateKey, options) => formatDate(parseDateKey(dateKey), options);
   const formatDateTime = (iso) => {
@@ -435,7 +438,7 @@ export default function StudyOS() {
     setNotes(Array.isArray(data.notes) ? data.notes.map((n) => normalizeNote(n, todayKey)) : []);
     setTasks(Array.isArray(data.tasks) ? data.tasks.map((task) => normalizeTask(task, todayKey)) : []);
     setCategories(Array.isArray(data.categories) && data.categories.length ? data.categories.map(normalizeCategory) : DEFAULT_CATEGORIES);
-    setLang(typeof data.lang === 'string' ? data.lang : 'en');
+    setLang(coerceLang(data.lang));
     setGoals(Array.isArray(data.goals) ? data.goals : []);
     setStudySessions(Array.isArray(data.studySessions) ? data.studySessions : []);
     setRevisions(Array.isArray(data.revisions) ? data.revisions : []);
@@ -504,7 +507,7 @@ export default function StudyOS() {
     try {
       const saved = JSON.parse(localStorage.getItem('bs3-workspace') || '{}');
       const l = localStorage.getItem('bs3-lang');
-      if (l && LANG_META[l]) setLang(l);
+      if (l) setLang(coerceLang(l));
       if (saved.notes) setNotes(saved.notes.map((n) => normalizeNote(n, todayKey)));
       if (saved.tasks) setTasks(saved.tasks.map((task) => normalizeTask(task, todayKey)));
       if (saved.categories?.length) setCategories(saved.categories.map(normalizeCategory));
@@ -1221,7 +1224,7 @@ Return plain JSON only:
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(180deg, #E0F2FE 0%, #EFF6FF 100%)' }}>
         <div className="px-5 py-3 rounded-2xl bg-white border border-sky-100 text-slate-600 font-semibold shadow-sm">
-          Dang tai phien dang nhap...
+          {t.loadingSession}
         </div>
       </div>
     );
@@ -1233,7 +1236,7 @@ Return plain JSON only:
 
   const selectedNoteBacklinks = selectedNote ? getBacklinkTitles(selectedNote, notes) : [];
 
-  const undoLabel = undoState?.type?.includes('task') ? 'Task da xoa' : 'Note da xoa';
+  const undoLabel = undoState?.type?.includes('task') ? t.undoTaskDeleted : t.undoNoteDeleted;
 
   return (
     <div className={`mesh-bg ${theme === 'dark' ? 'theme-dark text-slate-100' : 'theme-light text-slate-800'} min-h-screen md:pl-[84px] pb-24 md:pb-0 relative overflow-x-hidden`}>
@@ -1313,7 +1316,7 @@ Return plain JSON only:
               {Object.entries(LANG_META).map(([k, v]) => <option key={k} value={k}>{v.flag} {v.name}</option>)}
             </select>
             <button onClick={logout} className="px-3 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(135deg, #0EA5E9 0%, #1D4ED8 100%)' }}>
-              Dang xuat
+              {t.logout}
             </button>
           </div>
         </header>
@@ -1327,7 +1330,7 @@ Return plain JSON only:
                   <span className="text-[10px] font-bold text-sky-300 uppercase tracking-[2px]">Action Dashboard</span>
                 </div>
                 <h2 className="syne text-5xl font-bold leading-none">{progress}<span className="text-2xl text-blue-300">%</span></h2>
-                <p className="text-sky-200 text-sm mt-1 mb-5">{completedToday}/{todayTasks.length} task hom nay</p>
+                <p className="text-sky-200 text-sm mt-1 mb-5">{completedToday}/{todayTasks.length} {t.reflectTodayTaskSuffix}</p>
 
                 <div className="w-full h-2 rounded-full overflow-hidden mb-6" style={{ background: 'rgba(255,255,255,0.1)' }}>
                   <div className="h-full rounded-full transition-all duration-700" style={{ width: `${progress}%`, background: 'linear-gradient(90deg, #38BDF8, #06B6D4)' }} />
@@ -1344,33 +1347,33 @@ Return plain JSON only:
             </div>
 
             <div className="glass rounded-3xl p-5 space-y-3 shadow-sm">
-              <h3 className="syne font-bold text-[#0A1628]">Ra quyet dinh hom nay</h3>
+              <h3 className="syne font-bold text-[#0A1628]">{t.reflectDecisionTitle}</h3>
               <div className="rounded-xl border border-sky-100 p-3">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-sky-600">Hoc gi truoc?</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-sky-600">{t.reflectWhatFirst}</p>
                 {nextTaskRecommendation ? (
                   <>
                     <p className="font-semibold text-sm mt-1">{getTaskTitle(nextTaskRecommendation)}</p>
                     <p className="text-xs text-slate-500 mt-0.5">Due {formatDateFromKey(nextTaskRecommendation.dueDateKey)} · {nextTaskRecommendation.priority}</p>
-                    <button onClick={() => setView('plan')} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">Mo Planner</button>
+                    <button onClick={() => setView('plan')} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">{t.reflectOpenPlanner}</button>
                   </>
-                ) : <p className="text-sm text-slate-500 mt-1">Khong con viec mo.</p>}
+                ) : <p className="text-sm text-slate-500 mt-1">{t.reflectNoOpenTasks}</p>}
               </div>
 
               <div className="rounded-xl border border-rose-100 p-3">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-rose-600">Viec tre han</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-rose-600">{t.reflectOverdueTasks}</p>
                 <p className="text-2xl syne">{overdueTasks.length}</p>
-                <button onClick={() => { setView('plan'); setTaskFilters((prev) => ({ ...prev, overdueOnly: true })); }} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-rose-100 text-rose-700 font-semibold">Xu ly ngay</button>
+                <button onClick={() => { setView('plan'); setTaskFilters((prev) => ({ ...prev, overdueOnly: true })); }} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-rose-100 text-rose-700 font-semibold">{t.reflectHandleNow}</button>
               </div>
             </div>
 
             <div className="xl:col-span-2 glass rounded-3xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="syne font-bold text-[#0A1628]">Nhip mon hoc va hieu suat tuan</h3>
+                <h3 className="syne font-bold text-[#0A1628]">{t.reflectRhythmTitle}</h3>
                 <TrendingUp size={16} className="text-sky-500" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="rounded-2xl border border-sky-100 p-4">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Mon dang tut nhip</p>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{t.reflectLaggingSubjects}</p>
                   <div className="space-y-2">
                     {laggingSubjects.map((item) => (
                       <div key={item.subject} className="flex items-center justify-between">
@@ -1378,11 +1381,11 @@ Return plain JSON only:
                         <span className="text-xs text-slate-500">{item.completion}% · {item.minutes}m</span>
                       </div>
                     ))}
-                    {!laggingSubjects.length && <p className="text-sm text-slate-400">Khong co du lieu.</p>}
+                    {!laggingSubjects.length && <p className="text-sm text-slate-400">{t.reflectNoData}</p>}
                   </div>
                 </div>
                 <div className="rounded-2xl border border-sky-100 p-4">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Xu huong tuan nay</p>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{t.reflectWeeklyTrend}</p>
                   <p className="text-sm text-slate-700">Task completed: <b>{weeklyStats.thisWeekDone}</b> ({weeklyStats.taskDelta >= 0 ? '+' : ''}{weeklyStats.taskDelta} vs last week)</p>
                   <p className="text-sm text-slate-700 mt-2">Study minutes: <b>{weeklyStats.thisWeekMinutes}</b> ({weeklyStats.minuteDelta >= 0 ? '+' : ''}{weeklyStats.minuteDelta})</p>
                 </div>
@@ -1392,22 +1395,22 @@ Return plain JSON only:
             <div className="glass rounded-3xl p-6 shadow-sm space-y-3">
               <h3 className="syne font-bold text-[#0A1628]">Risk Radar</h3>
               <div className="rounded-xl border border-sky-100 p-3">
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Can on lai</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t.reflectNeedsReview}</p>
                 <p className="text-2xl syne">{reviewDueItems.length}</p>
-                <button onClick={() => setView('review')} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">Review ngay</button>
+                <button onClick={() => setView('review')} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">{t.reflectReviewNow}</button>
               </div>
               <div className="rounded-xl border border-sky-100 p-3">
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Xung dot tuan toi</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t.reflectNextWeekConflicts}</p>
                 {nextWeekConflicts.length ? nextWeekConflicts.map((item) => (
                   <p key={item.dateKey} className="text-sm mt-1">{formatDateFromKey(item.dateKey)} · {item.minutes}m</p>
-                )) : <p className="text-sm text-slate-500 mt-1">Khong co xung dot lon.</p>}
+                )) : <p className="text-sm text-slate-500 mt-1">{t.reflectNoLargeConflicts}</p>}
               </div>
               <div className="rounded-xl border border-sky-100 p-3">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Exam countdown</p>
                 {upcomingExams.slice(0, 2).map((exam) => (
-                  <p key={exam.id} className="text-sm mt-1">{exam.title} · {exam.daysLeft} ngay</p>
+                  <p key={exam.id} className="text-sm mt-1">{exam.title} · {exam.daysLeft} {t.reflectDays}</p>
                 ))}
-                {!upcomingExams.length && <p className="text-sm text-slate-500 mt-1">Chua co ky thi.</p>}
+                {!upcomingExams.length && <p className="text-sm text-slate-500 mt-1">{t.reflectNoExam}</p>}
               </div>
             </div>
           </div>
@@ -1507,7 +1510,7 @@ Return plain JSON only:
                 </div>
 
                 <form onSubmit={addTask} className="space-y-2 mb-4">
-                  <input value={newTask.title} onChange={(e) => setNewTask((prev) => ({ ...prev, title: e.target.value }))} placeholder="Them task..." className="w-full px-3 py-2.5 bg-sky-50/60 border border-sky-100 rounded-xl text-sm focus:outline-none" />
+                  <input value={newTask.title} onChange={(e) => setNewTask((prev) => ({ ...prev, title: e.target.value }))} placeholder={t.taskAddPlaceholder} className="w-full px-3 py-2.5 bg-sky-50/60 border border-sky-100 rounded-xl text-sm focus:outline-none" />
                   <div className="grid grid-cols-2 gap-2">
                     <input type="time" value={newTask.time} onChange={(e) => setNewTask((prev) => ({ ...prev, time: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs" />
                     <input type="date" value={newTask.dueDateKey} onChange={(e) => setNewTask((prev) => ({ ...prev, dueDateKey: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs" />
@@ -1663,7 +1666,7 @@ Return plain JSON only:
                   {!baseVisibleTasks.length && (
                     <div className="text-center py-10 opacity-40">
                       <ListChecks size={34} strokeWidth={1.2} className="mx-auto mb-2 text-slate-300" />
-                      <p className="text-sm text-slate-500">Khong co task theo filter hien tai.</p>
+                      <p className="text-sm text-slate-500">{t.taskNoMatchFilter}</p>
                     </div>
                   )}
                 </div>
@@ -1678,7 +1681,7 @@ Return plain JSON only:
                       <p className="text-[11px] text-slate-500">{formatDateFromKey(task.dateKey)} · due {formatDateFromKey(task.dueDateKey)} · {task.time}</p>
                     </div>
                   ))}
-                  {!upcomingTasks.length && <p className="text-sm text-slate-500">Khong co upcoming task.</p>}
+                  {!upcomingTasks.length && <p className="text-sm text-slate-500">{t.taskNoUpcoming}</p>}
                 </div>
               </div>
             </div>
@@ -1722,7 +1725,7 @@ Return plain JSON only:
                     </button>
                   </div>
                 ))}
-                {!studySessions.length && <p className="text-sm text-slate-500">Chua co session nao.</p>}
+                {!studySessions.length && <p className="text-sm text-slate-500">{t.studyNoSession}</p>}
               </div>
             </div>
 
@@ -1748,7 +1751,7 @@ Return plain JSON only:
                       <button onClick={() => setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, completed: !g.completed } : g))} className={`mt-1 px-2 py-1 text-[11px] rounded ${goal.completed ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{goal.completed ? 'Done' : 'Mark done'}</button>
                     </div>
                   ))}
-                  {!goals.length && <p className="text-sm text-slate-500">Them muc tieu de giu nhip hoc.</p>}
+                  {!goals.length && <p className="text-sm text-slate-500">{t.goalsKeepMomentum}</p>}
                 </div>
               </div>
 
@@ -1824,7 +1827,7 @@ Return plain JSON only:
                   </label>
                 </div>
 
-                <div className="text-xs text-slate-500">Split-view note browsing: list ben trai, editor ben phai.</div>
+                <div className="text-xs text-slate-500">{t.captureSplitViewHint}</div>
               </div>
             </div>
 
@@ -1832,7 +1835,7 @@ Return plain JSON only:
               <div className="glass rounded-3xl p-5 shadow-sm">
                 <h3 className="syne font-bold text-[#0A1628] mb-3">Quick Capture</h3>
                 <input value={newNote.title} onChange={(e) => setNewNote((prev) => ({ ...prev, title: e.target.value }))} placeholder={t.docTitle} className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-sm mb-2" />
-                <textarea value={newNote.content} onChange={(e) => setNewNote((prev) => ({ ...prev, content: e.target.value }))} rows={4} placeholder="Markdown ho tro co ban..." className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-sm mb-2" />
+                <textarea value={newNote.content} onChange={(e) => setNewNote((prev) => ({ ...prev, content: e.target.value }))} rows={4} placeholder={t.captureMarkdownHint} className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-sm mb-2" />
                 <div className="grid grid-cols-2 gap-2 mb-2">
                   <select value={newNote.category} onChange={(e) => setNewNote((prev) => ({ ...prev, category: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
                     {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
@@ -1869,7 +1872,7 @@ Return plain JSON only:
                 {!displayedNotes.length && (
                   <div className="text-center py-20 opacity-40">
                     <BookOpen size={40} strokeWidth={1} className="text-slate-300 mx-auto mb-3" />
-                    <p className="text-slate-500 font-semibold">Khong co note phu hop.</p>
+                    <p className="text-slate-500 font-semibold">{t.noteNoMatch}</p>
                   </div>
                 )}
               </div>
@@ -1924,12 +1927,12 @@ Return plain JSON only:
                         <div className="space-y-3">
                           <div className="rounded-2xl border border-sky-100 p-3">
                             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Backlinks</p>
-                            {selectedNoteBacklinks.length ? selectedNoteBacklinks.map((title) => <p key={title} className="text-sm">[[{title}]]</p>) : <p className="text-sm text-slate-500">Chua co backlinks.</p>}
+                            {selectedNoteBacklinks.length ? selectedNoteBacklinks.map((title) => <p key={title} className="text-sm">[[{title}]]</p>) : <p className="text-sm text-slate-500">{t.noteNoBacklinks}</p>}
                           </div>
 
                           <div className="rounded-2xl border border-sky-100 p-3">
                             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Attachments</p>
-                            {(selectedNote.attachments || []).length ? selectedNote.attachments.map((att, idx) => <p key={`${att}-${idx}`} className="text-sm text-slate-700">• {att}</p>) : <p className="text-sm text-slate-500">Chua co attachment.</p>}
+                            {(selectedNote.attachments || []).length ? selectedNote.attachments.map((att, idx) => <p key={`${att}-${idx}`} className="text-sm text-slate-700">• {att}</p>) : <p className="text-sm text-slate-500">{t.noteNoAttachments}</p>}
                           </div>
 
                           <div className="rounded-2xl border border-sky-100 p-3">
@@ -1946,7 +1949,7 @@ Return plain JSON only:
                                   </div>
                                 ))}
                               </div>
-                            ) : <p className="text-sm text-slate-500">Dung dong dang "Question: Answer" de convert.</p>}
+                            ) : <p className="text-sm text-slate-500">{t.noteFlashcardHint}</p>}
                           </div>
 
                           <div className="rounded-2xl border border-sky-100 p-3">
@@ -1960,14 +1963,14 @@ Return plain JSON only:
                                   </div>
                                 ))}
                               </div>
-                            ) : <p className="text-sm text-slate-500">Chua co version nao.</p>}
+                            ) : <p className="text-sm text-slate-500">{t.noteNoVersions}</p>}
                           </div>
                         </div>
                       </div>
                     )}
                   </>
                 ) : (
-                  <div className="text-center py-24 text-slate-500">Chon mot note de bat dau.</div>
+                  <div className="text-center py-24 text-slate-500">{t.noteSelectToStart}</div>
                 )}
               </div>
             </div>
@@ -2001,7 +2004,7 @@ Return plain JSON only:
                       </div>
                     );
                   })}
-                  {!revisions.length && <p className="text-sm text-slate-500">Chua co revision item. Convert tu notes de tao.</p>}
+                  {!revisions.length && <p className="text-sm text-slate-500">{t.reviewNoItems}</p>}
                 </div>
               </div>
 
@@ -2044,10 +2047,10 @@ Return plain JSON only:
                     <div key={exam.id} className="rounded-xl border border-sky-100 p-3">
                       <p className="text-sm font-semibold">{exam.title}</p>
                       <p className="text-xs text-slate-500">{categoryLabel(exam.subject)} · {formatDateFromKey(exam.dateKey)}</p>
-                      <p className="text-xs mt-1 font-semibold text-sky-700">Con {exam.daysLeft} ngay</p>
+                      <p className="text-xs mt-1 font-semibold text-sky-700">{t.examDaysLeftPrefix} {exam.daysLeft} {t.reflectDays}</p>
                     </div>
                   ))}
-                  {!upcomingExams.length && <p className="text-sm text-slate-500">Chua co ky thi sap toi.</p>}
+                  {!upcomingExams.length && <p className="text-sm text-slate-500">{t.examNoUpcoming}</p>}
                 </div>
               </div>
 
@@ -2066,7 +2069,7 @@ Return plain JSON only:
                       <p className="text-xs text-slate-500">{formatDateFromKey(task.dateKey)} · due {formatDateFromKey(task.dueDateKey)}</p>
                     </div>
                   ))}
-                  {!overdueTasks.length && !upcomingTasks.length && <p className="text-sm text-slate-500">Khong co item.</p>}
+                  {!overdueTasks.length && !upcomingTasks.length && <p className="text-sm text-slate-500">{t.reviewNoCombinedItems}</p>}
                 </div>
               </div>
             </div>

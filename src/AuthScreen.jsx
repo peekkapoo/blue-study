@@ -71,12 +71,12 @@ export default function AuthScreen({ onAuthSuccess }) {
           <p className="text-xs uppercase tracking-[3px] text-sky-300 font-semibold">Blue Study</p>
           <h1 className="text-4xl mt-4 font-bold leading-tight">Study smarter with one secure account</h1>
           <p className="mt-5 text-sky-100 text-sm leading-relaxed">
-            Tao tai khoan de luu toan bo ghi chu, lich hoc va thiet lap cua ban. Du lieu duoc dong bo theo tung user.
+            Create an account to save all your notes, schedules, and preferences. Data is synced per user.
           </p>
           <ul className="mt-6 space-y-2 text-sm text-sky-100">
-            <li>Dang ky / Dang nhap bang email</li>
-            <li>Xac thuc backend theo JWT</li>
-            <li>Dong bo du lieu hoc tap theo user</li>
+            <li>Sign up and sign in with email</li>
+            <li>JWT-secured backend authentication</li>
+            <li>Per-user study data sync</li>
           </ul>
         </section>
 
@@ -86,13 +86,13 @@ export default function AuthScreen({ onAuthSuccess }) {
               onClick={() => setMode('login')}
               className={`flex-1 py-2.5 text-sm rounded-lg font-semibold transition ${mode === 'login' ? 'bg-white text-sky-700 shadow' : 'text-slate-500'}`}
             >
-              Dang nhap
+              Sign in
             </button>
             <button
               onClick={() => setMode('register')}
               className={`flex-1 py-2.5 text-sm rounded-lg font-semibold transition ${mode === 'register' ? 'bg-white text-sky-700 shadow' : 'text-slate-500'}`}
             >
-              Dang ky
+              Create account
             </button>
           </div>
 
@@ -101,7 +101,7 @@ export default function AuthScreen({ onAuthSuccess }) {
               <input
                 value={form.name}
                 onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                placeholder="Ten hien thi"
+                placeholder="Display name"
                 required
                 className="w-full px-4 py-3 rounded-xl border border-sky-100 bg-sky-50/40 focus:outline-none focus:ring-2 focus:ring-sky-200"
               />
@@ -118,7 +118,7 @@ export default function AuthScreen({ onAuthSuccess }) {
               type="password"
               value={form.password}
               onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
-              placeholder="Mat khau (toi thieu 6 ky tu)"
+              placeholder="Password (minimum 6 characters)"
               required
               minLength={6}
               className="w-full px-4 py-3 rounded-xl border border-sky-100 bg-sky-50/40 focus:outline-none focus:ring-2 focus:ring-sky-200"
@@ -128,8 +128,8 @@ export default function AuthScreen({ onAuthSuccess }) {
             {!backendReady && (
               <p className="text-sm text-amber-700 bg-amber-50 rounded-xl px-3 py-2">
                 {IS_API_BASE_CONFIGURED
-                  ? 'Backend dang tat. Hay chay npm run dev de bat ca frontend va backend.'
-                  : 'Chua cau hinh VITE_API_BASE tren Vercel. Vui long set VITE_API_BASE=https://YOUR_BACKEND_URL va redeploy frontend.'}
+                  ? 'Backend appears offline. Run npm run dev to start both frontend and backend.'
+                  : 'VITE_API_BASE is not configured on Vercel. Set VITE_API_BASE=https://YOUR_BACKEND_URL and redeploy the frontend.'}
               </p>
             )}
 
@@ -139,7 +139,7 @@ export default function AuthScreen({ onAuthSuccess }) {
               className="w-full py-3 rounded-xl text-white font-semibold disabled:opacity-60"
               style={{ background: 'linear-gradient(135deg, #0EA5E9 0%, #1D4ED8 100%)' }}
             >
-              {loading ? 'Dang xu ly...' : mode === 'login' ? 'Dang nhap' : 'Tao tai khoan'}
+              {loading ? 'Processing...' : mode === 'login' ? 'Sign in' : 'Create account'}
             </button>
           </form>
         </section>

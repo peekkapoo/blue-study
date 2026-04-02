@@ -1,7 +1,7 @@
 const RAW_API_BASE = String(import.meta.env.VITE_API_BASE || '').trim();
 const API_BASE = RAW_API_BASE || (import.meta.env.DEV ? 'http://localhost:4000' : '');
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 12000);
-const API_BASE_SETUP_ERROR = 'Chua cau hinh VITE_API_BASE tren Vercel. Vui long set VITE_API_BASE=https://YOUR_BACKEND_URL va redeploy frontend.';
+const API_BASE_SETUP_ERROR = 'VITE_API_BASE is not configured on Vercel. Set VITE_API_BASE=https://YOUR_BACKEND_URL and redeploy the frontend.';
 
 export const IS_API_BASE_CONFIGURED = Boolean(API_BASE);
 
@@ -30,11 +30,11 @@ async function fetchWithTimeout(url, options) {
 
 function getNetworkErrorMessage(error) {
   if (error?.name === 'AbortError') {
-    return 'Backend phan hoi qua cham. Vui long thu lai.';
+    return 'Backend response timed out. Please try again.';
   }
   return import.meta.env.PROD
-    ? 'Khong ket noi duoc backend. Kiem tra backend deployment va bien VITE_API_BASE.'
-    : 'Khong ket noi duoc backend. Hay chay npm run dev de khoi dong ca frontend va backend.';
+    ? 'Unable to connect to backend. Check your backend deployment and VITE_API_BASE.'
+    : 'Unable to connect to backend. Run npm run dev to start both frontend and backend.';
 }
 
 export async function apiRequest(path, options = {}, token) {
