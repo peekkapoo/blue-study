@@ -33,4 +33,8 @@ export const defaultUserPayload = {
   tasks: [],
   categories: ['general', 'tech', 'language', 'skill'],
   lang: 'vi',
+  goals: [],
+  studySessions: [],
+  revisions: [],
+  exams: [],
 };

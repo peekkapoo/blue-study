@@ -1,0 +1,2145 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  LayoutDashboard,
+  Calendar as CalIcon,
+  BookOpen,
+  Plus,
+  Trash2,
+  ChevronRight,
+  ChevronLeft,
+  Clock,
+  Search,
+  X,
+  Check,
+  Sparkles,
+  Bot,
+  Send,
+  User,
+  Target,
+  Zap,
+  CheckCircle2,
+  TrendingUp,
+  Languages,
+  Sun,
+  Moon,
+  Pin,
+  PinOff,
+  Archive,
+  Copy,
+  CalendarClock,
+  GripVertical,
+  AlertTriangle,
+  Filter,
+  ListChecks,
+  Timer,
+  Flag,
+  RotateCw,
+  Undo2,
+  GraduationCap,
+  BookMarked,
+  Brain,
+  BarChart3,
+  ClipboardList,
+} from 'lucide-react';
+import {
+  LANG_META,
+  CATEGORY_LABELS,
+  UI_TEXT,
+  CATEGORY_ALIASES,
+  DEFAULT_CATEGORIES,
+  INITIAL_NOTE_SEEDS,
+  INITIAL_TASK_SEEDS,
+  SEED_NOTE_TEXTS,
+  SEED_TASK_TEXTS,
+} from './App.i18n';
+import AuthScreen from './AuthScreen';
+import { authApi, userDataApi } from './api';
+
+const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');`;
+
+const STYLES = `
+  *, body { font-family: 'Plus Jakarta Sans', sans-serif; }
+  .syne { font-family: 'Syne', sans-serif; }
+
+  :root {
+    --navy:   #0A1628;
+    --navy-2: #0F2244;
+    --blue:   #1B5FD9;
+    --sky:    #0EA5E9;
+    --cyan:   #06B6D4;
+    --ice:    #E0F2FE;
+    --bg:     #F0F9FF;
+  }
+
+  .scroll::-webkit-scrollbar { width: 4px; height: 4px; }
+  .scroll::-webkit-scrollbar-track { background: transparent; }
+  .scroll::-webkit-scrollbar-thumb { background: #BAE6FD; border-radius: 4px; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; } to { opacity: 1; }
+  }
+  @keyframes bounceDot {
+    0%,100% { transform: translateY(0); }
+    50%     { transform: translateY(-5px); }
+  }
+  .anim-tab { animation: fadeUp .3s ease both; }
+  .anim-fade { animation: fadeIn .25s ease both; }
+  .dot-1 { animation: bounceDot .9s 0ms infinite; }
+  .dot-2 { animation: bounceDot .9s 150ms infinite; }
+  .dot-3 { animation: bounceDot .9s 300ms infinite; }
+
+  .mesh-bg {
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(ellipse 60% 50% at 20% 0%, #BFDBFE88 0%, transparent 70%),
+      radial-gradient(ellipse 50% 40% at 90% 80%, #BAE6FD55 0%, transparent 60%),
+      radial-gradient(ellipse 40% 40% at 60% 40%, #E0F2FE44 0%, transparent 70%);
+  }
+
+  .theme-dark { --bg: #020617; }
+  .theme-dark .mesh-bg {
+    background-image:
+      radial-gradient(ellipse 60% 50% at 20% 0%, #1E3A8A66 0%, transparent 70%),
+      radial-gradient(ellipse 50% 40% at 90% 80%, #0F766E55 0%, transparent 60%),
+      radial-gradient(ellipse 40% 40% at 60% 40%, #1E293B66 0%, transparent 70%);
+  }
+
+  .glass {
+    background: rgba(255,255,255,0.78);
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(186,230,253,0.55);
+  }
+
+  .theme-dark .glass {
+    background: rgba(15,23,42,0.72);
+    border: 1px solid rgba(56,189,248,0.24);
+  }
+
+  .theme-dark .text-slate-900 { color: #E2E8F0 !important; }
+  .theme-dark .text-slate-800 { color: #E2E8F0 !important; }
+  .theme-dark .text-slate-700 { color: #CBD5E1 !important; }
+  .theme-dark .text-slate-600 { color: #CBD5E1 !important; }
+  .theme-dark .text-slate-500 { color: #94A3B8 !important; }
+  .theme-dark .text-slate-400 { color: #94A3B8 !important; }
+  .theme-dark .border-sky-100 { border-color: rgba(56,189,248,0.25) !important; }
+  .theme-dark [class*='bg-white/'],
+  .theme-dark .bg-white,
+  .theme-dark [class*='bg-sky-50'],
+  .theme-dark [class*='bg-slate-50/'] {
+    background-color: rgba(15,23,42,0.6) !important;
+  }
+
+  .theme-dark input,
+  .theme-dark textarea,
+  .theme-dark select { color: #E2E8F0; }
+
+  .theme-dark input::placeholder,
+  .theme-dark textarea::placeholder { color: #94A3B8; }
+
+  .nav-active {
+    background: var(--sky);
+    box-shadow: 0 4px 20px 0 #0EA5E960;
+  }
+
+  .strike {
+    text-decoration: line-through;
+    text-decoration-color: #94a3b8;
+  }
+`;
+
+const AUTH_TOKEN_KEY = 'bs3-auth-token';
+const AUTH_USER_KEY = 'bs3-auth-user';
+
+const normalizeCategory = (value) => CATEGORY_ALIASES[value] || value;
+const pad2 = (n) => String(n).padStart(2, '0');
+const toDateKey = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+const parseDateKey = (dateKey) => {
+  if (!dateKey || typeof dateKey !== 'string') return new Date();
+  const m = dateKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return new Date();
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+};
+
+const normalizeDateKey = (input, fallbackDate = new Date()) => {
+  if (!input) return toDateKey(fallbackDate);
+  if (typeof input === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
+    const d = new Date(input);
+    if (!Number.isNaN(d.getTime())) return toDateKey(d);
+  }
+  if (input instanceof Date && !Number.isNaN(input.getTime())) return toDateKey(input);
+  return toDateKey(fallbackDate);
+};
+
+const addDays = (dateKey, days) => {
+  const d = typeof dateKey === 'string' ? parseDateKey(dateKey) : new Date(dateKey);
+  d.setDate(d.getDate() + days);
+  return toDateKey(d);
+};
+
+const startOfWeek = (date) => {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const isSameWeek = (dateKey, pivot) => {
+  const d = parseDateKey(dateKey);
+  const s1 = startOfWeek(d).getTime();
+  const s2 = startOfWeek(pivot).getTime();
+  return s1 === s2;
+};
+
+const isoNow = () => new Date().toISOString();
+
+const getTimeGreeting = (hour, text) => {
+  if (hour >= 5 && hour < 11) return text.greetingMorning || text.greeting;
+  if (hour >= 11 && hour < 14) return text.greetingNoon || text.greeting;
+  if (hour >= 14 && hour < 18) return text.greetingAfternoon || text.greeting;
+  return text.greetingEvening || text.greeting;
+};
+
+const CAT_COLORS = {
+  general: { pill: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500', icon: 'bg-blue-50 text-blue-600' },
+  tech: { pill: 'bg-cyan-100 text-cyan-700', dot: 'bg-cyan-500', icon: 'bg-cyan-50 text-cyan-600' },
+  language: { pill: 'bg-indigo-100 text-indigo-700', dot: 'bg-indigo-500', icon: 'bg-indigo-50 text-indigo-600' },
+  skill: { pill: 'bg-sky-100 text-sky-700', dot: 'bg-sky-500', icon: 'bg-sky-50 text-sky-600' },
+};
+const catColor = (cat) => CAT_COLORS[cat] ?? { pill: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400', icon: 'bg-slate-50 text-slate-500' };
+
+const PRIORITY_META = {
+  low: { label: 'Low', cls: 'bg-slate-100 text-slate-600' },
+  medium: { label: 'Medium', cls: 'bg-amber-100 text-amber-700' },
+  high: { label: 'High', cls: 'bg-rose-100 text-rose-700' },
+};
+
+const RECURRENCE_STEP = {
+  none: 0,
+  daily: 1,
+  weekly: 7,
+  monthly: 30,
+};
+
+const WORKFLOW_NAV = [
+  { id: 'plan', label: 'Plan', icon: CalIcon },
+  { id: 'study', label: 'Study', icon: GraduationCap },
+  { id: 'capture', label: 'Capture', icon: BookOpen },
+  { id: 'review', label: 'Review', icon: Brain },
+  { id: 'reflect', label: 'Reflect', icon: LayoutDashboard },
+];
+
+const Stat = ({ label, value, sub }) => (
+  <div className="bg-white/20 rounded-2xl px-4 py-3 flex-1 text-center">
+    <p className="text-2xl font-bold syne">{value}</p>
+    <p className="text-[11px] text-blue-200 font-medium mt-0.5">{label}</p>
+    {sub && <p className="text-[10px] text-blue-300 mt-0.5">{sub}</p>}
+  </div>
+);
+
+const getBacklinkTitles = (note, notes) => {
+  const title = (note.title || '').trim();
+  if (!title) return [];
+  return notes
+    .filter((n) => n.id !== note.id)
+    .filter((n) => (n.content || '').includes(`[[${title}]]`))
+    .map((n) => n.title || 'Untitled');
+};
+
+const summarizeNote = (content) => {
+  const clean = String(content || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return '';
+  if (clean.length <= 140) return clean;
+  return `${clean.slice(0, 140)}...`;
+};
+
+const extractFlashcards = (content) => {
+  const lines = String(content || '').split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  return lines
+    .map((line) => {
+      const delimiter = line.includes('::') ? '::' : (line.includes(':') ? ':' : null);
+      if (!delimiter) return null;
+      const parts = line.split(delimiter);
+      if (parts.length < 2) return null;
+      const q = parts[0].trim();
+      const a = parts.slice(1).join(delimiter).trim();
+      if (!q || !a) return null;
+      return { question: q, answer: a };
+    })
+    .filter(Boolean);
+};
+
+const normalizeTask = (task, fallbackDateKey) => ({
+  ...task,
+  dateKey: normalizeDateKey(task.dateKey || task.scheduledDate || task.date, parseDateKey(fallbackDateKey)),
+  dueDateKey: normalizeDateKey(task.dueDateKey || task.dateKey || task.date, parseDateKey(fallbackDateKey)),
+  subject: normalizeCategory(task.subject || task.category || 'general'),
+  priority: ['low', 'medium', 'high'].includes(task.priority) ? task.priority : 'medium',
+  recurring: ['none', 'daily', 'weekly', 'monthly'].includes(task.recurring) ? task.recurring : 'none',
+  duration: Number(task.duration || 45),
+  archived: Boolean(task.archived),
+  completed: Boolean(task.completed),
+  reminderAt: task.reminderAt || '',
+  updatedAt: task.updatedAt || isoNow(),
+  createdAt: task.createdAt || isoNow(),
+});
+
+const normalizeNote = (note, fallbackDateKey) => ({
+  ...note,
+  dateKey: normalizeDateKey(note.dateKey || note.date, parseDateKey(fallbackDateKey)),
+  category: normalizeCategory(note.category || 'general'),
+  pinned: Boolean(note.pinned),
+  archived: Boolean(note.archived),
+  tags: Array.isArray(note.tags) ? note.tags : [],
+  versions: Array.isArray(note.versions) ? note.versions : [],
+  attachments: Array.isArray(note.attachments) ? note.attachments : [],
+  flashcards: Array.isArray(note.flashcards) ? note.flashcards : [],
+  updatedAt: note.updatedAt || isoNow(),
+  createdAt: note.createdAt || isoNow(),
+});
+
+export default function StudyOS() {
+  const [authToken, setAuthToken] = useState(localStorage.getItem(AUTH_TOKEN_KEY) || '');
+  const [authUser, setAuthUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(AUTH_USER_KEY) || 'null');
+    } catch {
+      return null;
+    }
+  });
+  const [authReady, setAuthReady] = useState(false);
+  const [theme, setTheme] = useState(() => (localStorage.getItem('bs3-theme') === 'dark' ? 'dark' : 'light'));
+  const [now, setNow] = useState(() => new Date());
+  const [lang, setLang] = useState('vi');
+  const [view, setView] = useState('reflect');
+
+  const [curMonth, setCurMonth] = useState(new Date());
+  const [selDate, setSelDate] = useState(new Date());
+  const [calendarView, setCalendarView] = useState('month');
+  const [plannerMode, setPlannerMode] = useState('today');
+  const [searchQ, setSearchQ] = useState('');
+
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [newCatInput, setNewCatInput] = useState('');
+
+  const t = UI_TEXT[lang] || UI_TEXT.vi;
+  const locale = LANG_META[lang]?.locale || 'vi-VN';
+  const formatDate = (date, options) => date.toLocaleDateString(locale, options);
+  const formatDateFromKey = (dateKey, options) => formatDate(parseDateKey(dateKey), options);
+  const formatDateTime = (iso) => {
+    if (!iso) return '-';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '-';
+    return d.toLocaleString(locale, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+  };
+  const categoryLabel = useCallback((cat) => (CATEGORY_LABELS[lang]?.[cat] || cat), [lang]);
+  const seedNoteText = useCallback((seedKey) => SEED_NOTE_TEXTS[seedKey]?.[lang] || SEED_NOTE_TEXTS[seedKey]?.vi, [lang]);
+  const seedTaskText = useCallback((seedKey) => SEED_TASK_TEXTS[seedKey]?.[lang] || SEED_TASK_TEXTS[seedKey]?.vi, [lang]);
+  const getNoteTitle = useCallback((note) => note.seedKey ? seedNoteText(note.seedKey)?.title || note.title || '' : note.title || '', [seedNoteText]);
+  const getNoteContent = useCallback((note) => note.seedKey ? seedNoteText(note.seedKey)?.content || note.content || '' : note.content || '', [seedNoteText]);
+  const getTaskTitle = useCallback((task) => task.seedKey ? seedTaskText(task.seedKey) || task.task || '' : task.task || '', [seedTaskText]);
+
+  const todayKey = toDateKey(now);
+
+  const [notes, setNotes] = useState(
+    INITIAL_NOTE_SEEDS.map((n) => normalizeNote({ ...n, dateKey: todayKey }, todayKey)),
+  );
+  const [tasks, setTasks] = useState(
+    INITIAL_TASK_SEEDS.map((task) => normalizeTask({ ...task, task: seedTaskText(task.seedKey), dateKey: todayKey }, todayKey)),
+  );
+  const [goals, setGoals] = useState([]);
+  const [studySessions, setStudySessions] = useState([]);
+  const [revisions, setRevisions] = useState([]);
+  const [exams, setExams] = useState([]);
+
+  const [newTask, setNewTask] = useState({
+    title: '',
+    time: '09:00',
+    dueDateKey: todayKey,
+    priority: 'medium',
+    recurring: 'none',
+    duration: 45,
+    subject: 'general',
+    reminderAt: '',
+  });
+
+  const [taskFilters, setTaskFilters] = useState({
+    status: 'open',
+    priority: 'all',
+    subject: 'all',
+    overdueOnly: false,
+    sort: 'dueAsc',
+    query: '',
+  });
+
+  const [noteFilters, setNoteFilters] = useState({
+    category: 'all',
+    tag: 'all',
+    sort: 'updated',
+    search: '',
+    archived: false,
+  });
+
+  const [newNote, setNewNote] = useState({
+    title: '',
+    content: '',
+    category: 'general',
+    tagsInput: '',
+    attachmentInput: '',
+  });
+
+  const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [taskDraft, setTaskDraft] = useState(null);
+
+  const [selectedNoteId, setSelectedNoteId] = useState(null);
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [noteDraft, setNoteDraft] = useState(null);
+
+  const [newGoal, setNewGoal] = useState({ title: '', subject: 'general', targetDateKey: addDays(todayKey, 14) });
+  const [newSession, setNewSession] = useState({ subject: 'general', duration: 60, dateKey: todayKey, focus: 4, note: '' });
+  const [newExam, setNewExam] = useState({ subject: 'general', dateKey: addDays(todayKey, 21), title: '' });
+
+  const [undoState, setUndoState] = useState(null);
+
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiInput, setAiInput] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [chatHistory, setChatHistory] = useState([{ role: 'ai', content: t.aiWelcome }]);
+
+  const chatEndRef = useRef(null);
+  const userDataLoadedRef = useRef(false);
+  const dragTaskIdRef = useRef(null);
+
+  const logout = () => {
+    setAuthToken('');
+    setAuthUser(null);
+    setAuthReady(true);
+    userDataLoadedRef.current = false;
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_USER_KEY);
+  };
+
+  const hydrateUserData = useCallback(async (token) => {
+    const { data } = await userDataApi.get(token);
+    if (!data) {
+      userDataLoadedRef.current = true;
+      return;
+    }
+    setNotes(Array.isArray(data.notes) ? data.notes.map((n) => normalizeNote(n, todayKey)) : []);
+    setTasks(Array.isArray(data.tasks) ? data.tasks.map((task) => normalizeTask(task, todayKey)) : []);
+    setCategories(Array.isArray(data.categories) && data.categories.length ? data.categories.map(normalizeCategory) : DEFAULT_CATEGORIES);
+    setLang(typeof data.lang === 'string' ? data.lang : 'vi');
+    setGoals(Array.isArray(data.goals) ? data.goals : []);
+    setStudySessions(Array.isArray(data.studySessions) ? data.studySessions : []);
+    setRevisions(Array.isArray(data.revisions) ? data.revisions : []);
+    setExams(Array.isArray(data.exams) ? data.exams : []);
+    userDataLoadedRef.current = true;
+  }, [todayKey]);
+
+  const onAuthSuccess = async (token, user) => {
+    setAuthToken(token);
+    setAuthUser(user);
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+    try {
+      await hydrateUserData(token);
+    } catch {
+      userDataLoadedRef.current = true;
+    }
+    setAuthReady(true);
+  };
+
+  useEffect(() => {
+    const bootstrapAuth = async () => {
+      if (!authToken) {
+        setAuthReady(true);
+        return;
+      }
+      try {
+        const res = await authApi.me(authToken);
+        setAuthUser(res.user);
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(res.user));
+        await hydrateUserData(authToken);
+      } catch {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+        localStorage.removeItem(AUTH_USER_KEY);
+        setAuthToken('');
+        setAuthUser(null);
+      } finally {
+        setAuthReady(true);
+      }
+    };
+    bootstrapAuth();
+  }, [authToken, hydrateUserData]);
+
+  useEffect(() => {
+    setChatHistory((prev) => {
+      if (!prev.length) return [{ role: 'ai', content: t.aiWelcome }];
+      return prev;
+    });
+  }, [t.aiWelcome]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('bs3-theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory, aiOpen]);
+
+  useEffect(() => {
+    if (authToken) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem('bs3-workspace') || '{}');
+      const l = localStorage.getItem('bs3-lang');
+      if (l && LANG_META[l]) setLang(l);
+      if (saved.notes) setNotes(saved.notes.map((n) => normalizeNote(n, todayKey)));
+      if (saved.tasks) setTasks(saved.tasks.map((task) => normalizeTask(task, todayKey)));
+      if (saved.categories?.length) setCategories(saved.categories.map(normalizeCategory));
+      if (Array.isArray(saved.goals)) setGoals(saved.goals);
+      if (Array.isArray(saved.studySessions)) setStudySessions(saved.studySessions);
+      if (Array.isArray(saved.revisions)) setRevisions(saved.revisions);
+      if (Array.isArray(saved.exams)) setExams(saved.exams);
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }, [authToken, todayKey]);
+
+  useEffect(() => {
+    if (authToken) return;
+    localStorage.setItem('bs3-lang', lang);
+    localStorage.setItem('bs3-workspace', JSON.stringify({
+      notes,
+      tasks,
+      categories,
+      goals,
+      studySessions,
+      revisions,
+      exams,
+    }));
+  }, [authToken, lang, notes, tasks, categories, goals, studySessions, revisions, exams]);
+
+  useEffect(() => {
+    if (!authToken || !authReady || !userDataLoadedRef.current) return;
+    const timer = setTimeout(() => {
+      userDataApi.save(authToken, { notes, tasks, categories, lang, goals, studySessions, revisions, exams }).catch(() => {});
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [authToken, authReady, notes, tasks, categories, lang, goals, studySessions, revisions, exams]);
+
+  const calDays = useMemo(() => {
+    const y = curMonth.getFullYear();
+    const m = curMonth.getMonth();
+    const total = new Date(y, m + 1, 0).getDate();
+    const startDay = new Date(y, m, 1).getDay();
+    const blanks = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(blanks).fill(null), ...Array.from({ length: total }, (_, i) => new Date(y, m, i + 1))];
+  }, [curMonth]);
+
+  const weekDays = useMemo(() => {
+    const start = startOfWeek(selDate);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      return d;
+    });
+  }, [selDate]);
+
+  const addCategory = () => {
+    const value = normalizeCategory(newCatInput.trim());
+    if (!value || categories.includes(value)) return;
+    setCategories((prev) => [...prev, value]);
+    setNewCatInput('');
+  };
+
+  const removeCategory = (cat) => {
+    if (cat === 'general') return;
+    setCategories((prev) => prev.filter((c) => c !== cat));
+    setTasks((prev) => prev.map((task) => task.subject === cat ? { ...task, subject: 'general', updatedAt: isoNow() } : task));
+    setNotes((prev) => prev.map((note) => note.category === cat ? { ...note, category: 'general', updatedAt: isoNow() } : note));
+  };
+
+  const addTask = (e) => {
+    e?.preventDefault();
+    if (!newTask.title.trim()) return;
+    const base = {
+      id: Date.now() + Math.random(),
+      task: newTask.title.trim(),
+      time: newTask.time || '09:00',
+      completed: false,
+      dateKey: toDateKey(selDate),
+      dueDateKey: normalizeDateKey(newTask.dueDateKey || toDateKey(selDate)),
+      subject: normalizeCategory(newTask.subject || 'general'),
+      priority: newTask.priority || 'medium',
+      recurring: newTask.recurring || 'none',
+      duration: Number(newTask.duration || 45),
+      reminderAt: newTask.reminderAt || '',
+      archived: false,
+      createdAt: isoNow(),
+      updatedAt: isoNow(),
+    };
+    setTasks((prev) => [normalizeTask(base, todayKey), ...prev]);
+    setNewTask({
+      title: '',
+      time: '09:00',
+      dueDateKey: toDateKey(selDate),
+      priority: 'medium',
+      recurring: 'none',
+      duration: 45,
+      subject: 'general',
+      reminderAt: '',
+    });
+  };
+
+  const spawnRecurringFromTask = (task) => {
+    const step = RECURRENCE_STEP[task.recurring] || 0;
+    if (!step) return null;
+    const nextDateKey = addDays(task.dateKey, step);
+    return normalizeTask({
+      ...task,
+      id: Date.now() + Math.random(),
+      completed: false,
+      dateKey: nextDateKey,
+      dueDateKey: task.dueDateKey ? addDays(task.dueDateKey, step) : nextDateKey,
+      reminderAt: task.reminderAt ? `${nextDateKey}T${(task.time || '09:00').slice(0, 5)}` : '',
+      createdAt: isoNow(),
+      updatedAt: isoNow(),
+    }, todayKey);
+  };
+
+  const toggleTask = (id) => {
+    setTasks((prev) => {
+      const target = prev.find((task) => task.id === id);
+      if (!target) return prev;
+      const toggledToCompleted = !target.completed;
+      let next = prev.map((task) => task.id === id ? { ...task, completed: toggledToCompleted, updatedAt: isoNow() } : task);
+      if (toggledToCompleted && target.recurring !== 'none') {
+        const newRecurring = spawnRecurringFromTask(target);
+        if (newRecurring) next = [newRecurring, ...next];
+      }
+      return next;
+    });
+  };
+
+  const openTaskEdit = (task) => {
+    setEditingTaskId(task.id);
+    setTaskDraft({ ...task });
+  };
+
+  const saveTaskEdit = () => {
+    if (!taskDraft || !String(taskDraft.task || '').trim()) return;
+    setTasks((prev) => prev.map((task) => task.id === editingTaskId ? normalizeTask({ ...taskDraft, task: taskDraft.task.trim(), updatedAt: isoNow() }, todayKey) : task));
+    setEditingTaskId(null);
+    setTaskDraft(null);
+  };
+
+  const duplicateTask = (task) => {
+    const clone = normalizeTask({
+      ...task,
+      id: Date.now() + Math.random(),
+      task: `${getTaskTitle(task)} (copy)`,
+      completed: false,
+      dateKey: task.dateKey,
+      createdAt: isoNow(),
+      updatedAt: isoNow(),
+    }, todayKey);
+    setTasks((prev) => [clone, ...prev]);
+  };
+
+  const archiveTask = (id, archived = true) => {
+    setTasks((prev) => prev.map((task) => task.id === id ? { ...task, archived, updatedAt: isoNow() } : task));
+  };
+
+  const quickMoveTask = (id, days) => {
+    setTasks((prev) => prev.map((task) => {
+      if (task.id !== id) return task;
+      return {
+        ...task,
+        dateKey: addDays(task.dateKey, days),
+        dueDateKey: task.dueDateKey ? addDays(task.dueDateKey, days) : addDays(task.dateKey, days),
+        updatedAt: isoNow(),
+      };
+    }));
+  };
+
+  const deleteTask = (id) => {
+    const target = tasks.find((task) => task.id === id);
+    if (!target) return;
+    setUndoState({ type: 'task', payload: target, createdAt: Date.now() });
+    setTasks((prev) => prev.filter((task) => task.id !== id));
+    setSelectedTaskIds((prev) => prev.filter((taskId) => taskId !== id));
+  };
+
+  const addNote = () => {
+    if (!newNote.title.trim()) return;
+    const tags = newNote.tagsInput.split(',').map((tag) => tag.trim()).filter(Boolean);
+    const attachmentSeed = newNote.attachmentInput.trim();
+    const note = normalizeNote({
+      id: Date.now() + Math.random(),
+      title: newNote.title.trim(),
+      content: newNote.content,
+      category: newNote.category || 'general',
+      tags,
+      attachments: attachmentSeed ? [attachmentSeed] : [],
+      versions: [],
+      flashcards: [],
+      pinned: false,
+      archived: false,
+      dateKey: toDateKey(selDate),
+      createdAt: isoNow(),
+      updatedAt: isoNow(),
+    }, todayKey);
+    setNotes((prev) => [note, ...prev]);
+    setNewNote({ title: '', content: '', category: categories[0] || 'general', tagsInput: '', attachmentInput: '' });
+    setSelectedNoteId(note.id);
+  };
+
+  const openNoteEdit = (note) => {
+    setEditingNoteId(note.id);
+    setSelectedNoteId(note.id);
+    setNoteDraft({
+      ...note,
+      tagsInput: (note.tags || []).join(', '),
+      attachmentInput: '',
+    });
+  };
+
+  const saveNoteEdit = () => {
+    if (!noteDraft || !String(noteDraft.title || '').trim()) return;
+    setNotes((prev) => prev.map((note) => {
+      if (note.id !== editingNoteId) return note;
+      const nextVersion = {
+        title: note.title,
+        content: note.content,
+        updatedAt: note.updatedAt,
+      };
+      const tags = String(noteDraft.tagsInput || '').split(',').map((tag) => tag.trim()).filter(Boolean);
+      const attachments = [...(Array.isArray(note.attachments) ? note.attachments : [])];
+      if (noteDraft.attachmentInput?.trim()) attachments.unshift(noteDraft.attachmentInput.trim());
+      return normalizeNote({
+        ...note,
+        ...noteDraft,
+        title: noteDraft.title.trim(),
+        tags,
+        attachments,
+        versions: [nextVersion, ...(note.versions || [])].slice(0, 6),
+        updatedAt: isoNow(),
+      }, todayKey);
+    }));
+    setEditingNoteId(null);
+    setNoteDraft(null);
+  };
+
+  const duplicateNote = (note) => {
+    const clone = normalizeNote({
+      ...note,
+      id: Date.now() + Math.random(),
+      title: `${getNoteTitle(note)} (copy)`,
+      pinned: false,
+      archived: false,
+      createdAt: isoNow(),
+      updatedAt: isoNow(),
+    }, todayKey);
+    setNotes((prev) => [clone, ...prev]);
+  };
+
+  const togglePinNote = (id) => {
+    setNotes((prev) => prev.map((note) => note.id === id ? { ...note, pinned: !note.pinned, updatedAt: isoNow() } : note));
+  };
+
+  const archiveNote = (id, archived = true) => {
+    setNotes((prev) => prev.map((note) => note.id === id ? { ...note, archived, updatedAt: isoNow() } : note));
+  };
+
+  const deleteNote = (id) => {
+    const target = notes.find((note) => note.id === id);
+    if (!target) return;
+    setUndoState({ type: 'note', payload: target, createdAt: Date.now() });
+    setNotes((prev) => prev.filter((note) => note.id !== id));
+    if (selectedNoteId === id) setSelectedNoteId(null);
+  };
+
+  const restoreVersion = (noteId, version) => {
+    setNotes((prev) => prev.map((note) => {
+      if (note.id !== noteId) return note;
+      return {
+        ...note,
+        title: version.title,
+        content: version.content,
+        updatedAt: isoNow(),
+      };
+    }));
+  };
+
+  const convertNoteToFlashcards = (noteId) => {
+    setNotes((prev) => prev.map((note) => {
+      if (note.id !== noteId) return note;
+      const flashcards = extractFlashcards(getNoteContent(note));
+      if (!flashcards.length) return note;
+      const nextReviewKey = addDays(todayKey, 2);
+      setRevisions((old) => [
+        ...flashcards.map((card) => ({
+          id: Date.now() + Math.random(),
+          noteId,
+          subject: note.category || 'general',
+          question: card.question,
+          answer: card.answer,
+          intervalDays: 2,
+          nextReviewKey,
+          lastReviewedKey: todayKey,
+        })),
+        ...old,
+      ]);
+      return { ...note, flashcards, updatedAt: isoNow() };
+    }));
+  };
+
+  const undoDelete = () => {
+    if (!undoState) return;
+    if (undoState.type === 'task') {
+      setTasks((prev) => [undoState.payload, ...prev]);
+    }
+    if (undoState.type === 'note') {
+      setNotes((prev) => [undoState.payload, ...prev]);
+    }
+    setUndoState(null);
+  };
+
+  const toggleTaskSelect = (id) => {
+    setSelectedTaskIds((prev) => prev.includes(id) ? prev.filter((taskId) => taskId !== id) : [...prev, id]);
+  };
+
+  const bulkTaskAction = (action) => {
+    if (!selectedTaskIds.length) return;
+    if (action === 'complete') {
+      setTasks((prev) => prev.map((task) => selectedTaskIds.includes(task.id) ? { ...task, completed: true, updatedAt: isoNow() } : task));
+    }
+    if (action === 'archive') {
+      setTasks((prev) => prev.map((task) => selectedTaskIds.includes(task.id) ? { ...task, archived: true, updatedAt: isoNow() } : task));
+    }
+    if (action === 'delete') {
+      const deleted = tasks.filter((task) => selectedTaskIds.includes(task.id));
+      if (deleted.length) {
+        setUndoState({ type: 'task-bulk', payload: deleted, createdAt: Date.now() });
+      }
+      setTasks((prev) => prev.filter((task) => !selectedTaskIds.includes(task.id)));
+    }
+    if (action === 'tomorrow') {
+      setTasks((prev) => prev.map((task) => {
+        if (!selectedTaskIds.includes(task.id)) return task;
+        return {
+          ...task,
+          dateKey: addDays(task.dateKey, 1),
+          dueDateKey: task.dueDateKey ? addDays(task.dueDateKey, 1) : addDays(task.dateKey, 1),
+          updatedAt: isoNow(),
+        };
+      }));
+    }
+    if (action === 'nextWeek') {
+      setTasks((prev) => prev.map((task) => {
+        if (!selectedTaskIds.includes(task.id)) return task;
+        return {
+          ...task,
+          dateKey: addDays(task.dateKey, 7),
+          dueDateKey: task.dueDateKey ? addDays(task.dueDateKey, 7) : addDays(task.dateKey, 7),
+          updatedAt: isoNow(),
+        };
+      }));
+    }
+    setSelectedTaskIds([]);
+  };
+
+  useEffect(() => {
+    if (!undoState) return;
+    const timer = setTimeout(() => setUndoState(null), 6000);
+    return () => clearTimeout(timer);
+  }, [undoState]);
+
+  const addGoal = (e) => {
+    e?.preventDefault();
+    if (!newGoal.title.trim()) return;
+    const item = {
+      id: Date.now() + Math.random(),
+      title: newGoal.title.trim(),
+      subject: newGoal.subject || 'general',
+      targetDateKey: normalizeDateKey(newGoal.targetDateKey, parseDateKey(addDays(todayKey, 14))),
+      completed: false,
+      createdAt: isoNow(),
+    };
+    setGoals((prev) => [item, ...prev]);
+    setNewGoal({ title: '', subject: newGoal.subject, targetDateKey: addDays(todayKey, 14) });
+  };
+
+  const addStudySession = (e) => {
+    e?.preventDefault();
+    const session = {
+      id: Date.now() + Math.random(),
+      subject: newSession.subject || 'general',
+      duration: Number(newSession.duration || 60),
+      dateKey: normalizeDateKey(newSession.dateKey, now),
+      focus: Number(newSession.focus || 4),
+      note: newSession.note || '',
+      createdAt: isoNow(),
+    };
+    setStudySessions((prev) => [session, ...prev]);
+    setNewSession({ subject: newSession.subject, duration: 60, dateKey: todayKey, focus: 4, note: '' });
+  };
+
+  const addExam = (e) => {
+    e?.preventDefault();
+    if (!newExam.title.trim()) return;
+    const exam = {
+      id: Date.now() + Math.random(),
+      title: newExam.title.trim(),
+      subject: newExam.subject || 'general',
+      dateKey: normalizeDateKey(newExam.dateKey, parseDateKey(addDays(todayKey, 21))),
+      createdAt: isoNow(),
+    };
+    setExams((prev) => [exam, ...prev]);
+    setNewExam({ title: '', subject: newExam.subject, dateKey: addDays(todayKey, 21) });
+  };
+
+  const reviewRevision = (id, remembered) => {
+    setRevisions((prev) => prev.map((item) => {
+      if (item.id !== id) return item;
+      const nextInterval = remembered ? Math.min((item.intervalDays || 2) * 2, 21) : 1;
+      return {
+        ...item,
+        intervalDays: nextInterval,
+        lastReviewedKey: todayKey,
+        nextReviewKey: addDays(todayKey, nextInterval),
+      };
+    }));
+  };
+
+  const subjectProgress = useMemo(() => {
+    return categories.map((subject) => {
+      const subjectTasks = tasks.filter((task) => task.subject === subject && !task.archived);
+      const done = subjectTasks.filter((task) => task.completed).length;
+      const completion = subjectTasks.length ? Math.round((done / subjectTasks.length) * 100) : 0;
+      const minutes = studySessions.filter((session) => session.subject === subject).reduce((sum, s) => sum + Number(s.duration || 0), 0);
+      return {
+        subject,
+        completion,
+        minutes,
+        score: completion * 0.6 + Math.min(minutes, 240) * 0.4,
+      };
+    });
+  }, [categories, tasks, studySessions]);
+
+  const laggingSubjects = useMemo(() => subjectProgress.slice().sort((a, b) => a.score - b.score).slice(0, 2), [subjectProgress]);
+
+  const todayTasks = tasks.filter((task) => task.dateKey === todayKey && !task.archived);
+  const completedToday = todayTasks.filter((task) => task.completed).length;
+  const progress = todayTasks.length ? Math.round((completedToday / todayTasks.length) * 100) : 0;
+
+  const overdueTasks = useMemo(() => tasks.filter((task) => !task.archived && !task.completed && task.dueDateKey < todayKey), [tasks, todayKey]);
+
+  const reviewDueItems = useMemo(() => revisions.filter((item) => item.nextReviewKey <= todayKey), [revisions, todayKey]);
+
+  const upcomingTasks = useMemo(() => {
+    return tasks
+      .filter((task) => !task.archived && !task.completed && task.dateKey > todayKey)
+      .sort((a, b) => (a.dateKey + a.time).localeCompare(b.dateKey + b.time))
+      .slice(0, 6);
+  }, [tasks, todayKey]);
+
+  const upcomingExams = useMemo(() => {
+    return exams
+      .map((exam) => ({ ...exam, daysLeft: Math.ceil((parseDateKey(exam.dateKey) - parseDateKey(todayKey)) / 86400000) }))
+      .filter((exam) => exam.daysLeft >= 0)
+      .sort((a, b) => a.daysLeft - b.daysLeft);
+  }, [exams, todayKey]);
+
+  const nextTaskRecommendation = useMemo(() => {
+    const queue = tasks
+      .filter((task) => !task.archived && !task.completed)
+      .sort((a, b) => {
+        const priorityOrder = { high: 0, medium: 1, low: 2 };
+        const aOverdue = a.dueDateKey < todayKey ? 0 : 1;
+        const bOverdue = b.dueDateKey < todayKey ? 0 : 1;
+        if (aOverdue !== bOverdue) return aOverdue - bOverdue;
+        if (priorityOrder[a.priority] !== priorityOrder[b.priority]) return priorityOrder[a.priority] - priorityOrder[b.priority];
+        return (a.dueDateKey + a.time).localeCompare(b.dueDateKey + b.time);
+      });
+    return queue[0] || null;
+  }, [tasks, todayKey]);
+
+  const weeklyStats = useMemo(() => {
+    const currentWeekStart = startOfWeek(now);
+    const prevWeekStart = new Date(currentWeekStart);
+    prevWeekStart.setDate(currentWeekStart.getDate() - 7);
+
+    const inWeek = (dateKey, startDate) => {
+      const date = parseDateKey(dateKey);
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 6);
+      return date >= startDate && date <= endDate;
+    };
+
+    const thisWeekDone = tasks.filter((task) => task.completed && inWeek(task.dateKey, currentWeekStart)).length;
+    const prevWeekDone = tasks.filter((task) => task.completed && inWeek(task.dateKey, prevWeekStart)).length;
+    const thisWeekMinutes = studySessions.filter((s) => inWeek(s.dateKey, currentWeekStart)).reduce((sum, s) => sum + Number(s.duration || 0), 0);
+    const prevWeekMinutes = studySessions.filter((s) => inWeek(s.dateKey, prevWeekStart)).reduce((sum, s) => sum + Number(s.duration || 0), 0);
+
+    return {
+      thisWeekDone,
+      prevWeekDone,
+      thisWeekMinutes,
+      prevWeekMinutes,
+      taskDelta: thisWeekDone - prevWeekDone,
+      minuteDelta: thisWeekMinutes - prevWeekMinutes,
+    };
+  }, [tasks, studySessions, now]);
+
+  const nextWeekConflicts = useMemo(() => {
+    const nextWeekStart = startOfWeek(now);
+    nextWeekStart.setDate(nextWeekStart.getDate() + 7);
+    const buckets = {};
+    tasks.forEach((task) => {
+      if (task.archived || task.completed) return;
+      const date = parseDateKey(task.dateKey);
+      const end = new Date(nextWeekStart);
+      end.setDate(nextWeekStart.getDate() + 6);
+      if (date < nextWeekStart || date > end) return;
+      buckets[task.dateKey] = (buckets[task.dateKey] || 0) + Number(task.duration || 0);
+    });
+    return Object.entries(buckets)
+      .filter(([, minutes]) => minutes >= 240)
+      .map(([dateKey, minutes]) => ({ dateKey, minutes }))
+      .sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+  }, [tasks, now]);
+
+  const todayModeDateKey = toDateKey(selDate);
+
+  const baseVisibleTasks = useMemo(() => {
+    let list = tasks.filter((task) => !task.archived);
+
+    if (plannerMode === 'today') {
+      list = list.filter((task) => task.dateKey === todayKey);
+    }
+    if (plannerMode === 'week') {
+      list = list.filter((task) => isSameWeek(task.dateKey, selDate));
+    }
+    if (plannerMode === 'upcoming') {
+      list = list.filter((task) => task.dateKey >= todayKey && task.dateKey <= addDays(todayKey, 14));
+    }
+    if (plannerMode === 'day') {
+      list = list.filter((task) => task.dateKey === todayModeDateKey);
+    }
+
+    if (taskFilters.status === 'open') list = list.filter((task) => !task.completed);
+    if (taskFilters.status === 'done') list = list.filter((task) => task.completed);
+    if (taskFilters.priority !== 'all') list = list.filter((task) => task.priority === taskFilters.priority);
+    if (taskFilters.subject !== 'all') list = list.filter((task) => task.subject === taskFilters.subject);
+    if (taskFilters.overdueOnly) list = list.filter((task) => !task.completed && task.dueDateKey < todayKey);
+    if (taskFilters.query.trim()) {
+      const q = taskFilters.query.toLowerCase();
+      list = list.filter((task) => getTaskTitle(task).toLowerCase().includes(q));
+    }
+
+    const priorityOrder = { high: 0, medium: 1, low: 2 };
+    if (taskFilters.sort === 'dueAsc') {
+      list = list.slice().sort((a, b) => (a.dueDateKey + a.time).localeCompare(b.dueDateKey + b.time));
+    }
+    if (taskFilters.sort === 'priority') {
+      list = list.slice().sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+    }
+    if (taskFilters.sort === 'updated') {
+      list = list.slice().sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    }
+    if (taskFilters.sort === 'duration') {
+      list = list.slice().sort((a, b) => Number(b.duration) - Number(a.duration));
+    }
+
+    return list;
+  }, [tasks, plannerMode, todayKey, selDate, todayModeDateKey, taskFilters, getTaskTitle]);
+
+  const tasksBySubject = useMemo(() => {
+    const grouped = {};
+    baseVisibleTasks.forEach((task) => {
+      if (!grouped[task.subject]) grouped[task.subject] = [];
+      grouped[task.subject].push(task);
+    });
+    return grouped;
+  }, [baseVisibleTasks]);
+
+  const allTags = useMemo(() => {
+    const set = new Set();
+    notes.forEach((note) => (note.tags || []).forEach((tag) => set.add(tag)));
+    return Array.from(set);
+  }, [notes]);
+
+  const displayedNotes = useMemo(() => {
+    let list = notes.filter((note) => note.archived === noteFilters.archived);
+    if (noteFilters.category !== 'all') list = list.filter((note) => note.category === noteFilters.category);
+    if (noteFilters.tag !== 'all') list = list.filter((note) => (note.tags || []).includes(noteFilters.tag));
+    if (searchQ.trim()) {
+      const q = searchQ.toLowerCase();
+      list = list.filter((note) =>
+        getNoteTitle(note).toLowerCase().includes(q) ||
+        getNoteContent(note).toLowerCase().includes(q),
+      );
+    }
+    if (noteFilters.search.trim()) {
+      const q = noteFilters.search.toLowerCase();
+      list = list.filter((note) =>
+        getNoteTitle(note).toLowerCase().includes(q) ||
+        getNoteContent(note).toLowerCase().includes(q),
+      );
+    }
+
+    if (noteFilters.sort === 'updated') {
+      list = list.slice().sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+        return new Date(b.updatedAt) - new Date(a.updatedAt);
+      });
+    }
+    if (noteFilters.sort === 'title') {
+      list = list.slice().sort((a, b) => getNoteTitle(a).localeCompare(getNoteTitle(b)));
+    }
+
+    return list;
+  }, [notes, noteFilters, searchQ, getNoteContent, getNoteTitle]);
+
+  const selectedNote = displayedNotes.find((note) => note.id === selectedNoteId)
+    || notes.find((note) => note.id === selectedNoteId)
+    || displayedNotes[0]
+    || null;
+
+  useEffect(() => {
+    if (!selectedNoteId && displayedNotes.length) {
+      setSelectedNoteId(displayedNotes[0].id);
+    }
+  }, [displayedNotes, selectedNoteId]);
+
+  const handleAI = async (e) => {
+    e.preventDefault();
+    if (!aiInput.trim() || aiLoading) return;
+    const userMsg = aiInput.trim();
+    setChatHistory((prev) => [...prev, { role: 'user', content: userMsg }]);
+    setAiInput('');
+    setAiLoading(true);
+
+    try {
+      const systemPrompt = `You are BlueStudy AI, a study assistant. Reply in ${t.aiReplyLang}.
+Today: ${formatDateFromKey(todayKey)}.
+Open tasks: ${JSON.stringify(tasks.filter((task) => !task.completed).slice(0, 15).map((task) => ({
+  title: getTaskTitle(task), date: task.dateKey, due: task.dueDateKey, priority: task.priority,
+})))}
+
+Return plain JSON only:
+{"reply":"text","action":"CHAT|ADD_TASK|ADD_NOTE","newTasks":[{"title":"","time":"HH:MM","dateString":"YYYY-MM-DD","dueDate":"YYYY-MM-DD","priority":"low|medium|high"}],"newNotes":[{"title":"","content":"","category":""}]}`;
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1000,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userMsg }],
+        }),
+      });
+
+      const data = await res.json();
+      const raw = data.content?.[0]?.text || '{}';
+      let result;
+      try {
+        result = JSON.parse(raw.replace(/```json|```/g, '').trim());
+      } catch {
+        result = { reply: raw, action: 'CHAT' };
+      }
+
+      setChatHistory((prev) => [...prev, { role: 'ai', content: result.reply || t.genericError }]);
+
+      if (result.action === 'ADD_TASK' && result.newTasks?.length) {
+        setTasks((prev) => [
+          ...result.newTasks.map((task) => normalizeTask({
+            id: Date.now() + Math.random(),
+            task: task.title,
+            time: task.time || '09:00',
+            dateKey: normalizeDateKey(task.dateString, now),
+            dueDateKey: normalizeDateKey(task.dueDate || task.dateString, now),
+            priority: task.priority || 'medium',
+            recurring: 'none',
+            duration: 45,
+            subject: 'general',
+            completed: false,
+            archived: false,
+            createdAt: isoNow(),
+            updatedAt: isoNow(),
+          }, todayKey)),
+          ...prev,
+        ]);
+      }
+
+      if (result.action === 'ADD_NOTE' && result.newNotes?.length) {
+        setNotes((prev) => [
+          ...result.newNotes.map((note) => normalizeNote({
+            id: Date.now() + Math.random(),
+            title: note.title,
+            content: note.content,
+            category: categories.includes(normalizeCategory(note.category)) ? normalizeCategory(note.category) : 'general',
+            tags: [],
+            pinned: false,
+            archived: false,
+            dateKey: todayKey,
+            createdAt: isoNow(),
+            updatedAt: isoNow(),
+          }, todayKey)),
+          ...prev,
+        ]);
+      }
+    } catch {
+      setChatHistory((prev) => [...prev, { role: 'ai', content: t.connectionError }]);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const currentHour = now.getHours();
+  const timeGreeting = getTimeGreeting(currentHour, t);
+  const currentTimeLabel = now.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  const toggleTheme = () => setTheme((prev) => prev === 'dark' ? 'light' : 'dark');
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(180deg, #E0F2FE 0%, #EFF6FF 100%)' }}>
+        <div className="px-5 py-3 rounded-2xl bg-white border border-sky-100 text-slate-600 font-semibold shadow-sm">
+          Dang tai phien dang nhap...
+        </div>
+      </div>
+    );
+  }
+
+  if (!authToken || !authUser) {
+    return <AuthScreen onAuthSuccess={onAuthSuccess} />;
+  }
+
+  const selectedNoteBacklinks = selectedNote ? getBacklinkTitles(selectedNote, notes) : [];
+
+  const undoLabel = undoState?.type?.includes('task') ? 'Task da xoa' : 'Note da xoa';
+
+  return (
+    <div className={`mesh-bg ${theme === 'dark' ? 'theme-dark text-slate-100' : 'theme-light text-slate-800'} min-h-screen md:pl-[84px] pb-24 md:pb-0 relative overflow-x-hidden`}>
+      <style>{FONTS + STYLES}</style>
+
+      <nav className="
+        fixed z-50
+        bottom-4 left-1/2 -translate-x-1/2
+        md:left-0 md:top-0 md:bottom-0 md:translate-x-0 md:h-full
+        w-[92%] md:w-[84px]
+        flex md:flex-col items-center justify-between
+        py-2.5 px-4 md:py-8 md:px-0
+        rounded-2xl md:rounded-none
+        border border-white/10 md:border-r md:border-y-0 md:border-l-0
+        shadow-2xl md:shadow-none"
+        style={{ background: 'linear-gradient(170deg, #0A1628 0%, #0F2244 100%)' }}
+      >
+        <div className="hidden md:flex flex-col items-center gap-1.5">
+          <div className="w-10 h-10 rounded-[14px] flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #38BDF8, #1D4ED8)' }}>
+            <Zap size={19} className="text-white" strokeWidth={2.5} />
+          </div>
+          <span className="syne text-[9px] font-bold text-sky-400 tracking-[3px] uppercase">BLUE</span>
+        </div>
+
+        <div className="flex md:flex-col gap-1.5 items-center">
+          {WORKFLOW_NAV.map((item) => {
+            const IconCmp = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setView(item.id)}
+                title={item.label}
+                className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all duration-200 group relative ${view === item.id ? 'nav-active text-white' : 'text-slate-400 hover:bg-white/10 hover:text-sky-300'}`}
+              >
+                <IconCmp size={19} strokeWidth={view === item.id ? 2.5 : 2} />
+                <span className="text-[9px] mt-1 font-semibold hidden md:block tracking-wide">{item.label}</span>
+                <span className="absolute left-[calc(100%+10px)] px-2.5 py-1 bg-[#0A1628] text-white text-xs rounded-lg
+                  opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap hidden md:block
+                  shadow-xl border border-white/10 pointer-events-none">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="hidden md:block">
+          <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=StudyBlue&backgroundColor=bfdbfe" className="w-9 h-9 rounded-full border-2 border-sky-500/30" alt="av" />
+        </div>
+      </nav>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 md:px-10 pt-6 pb-8 relative z-10">
+        <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-7">
+          <div>
+            <p className="text-[11px] font-bold text-sky-500 uppercase tracking-[2.5px] mb-1">
+              {formatDate(now, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+            <h1 className="syne text-2xl md:text-[2rem] font-bold text-[#0A1628] leading-tight">
+              {view === 'reflect' ? timeGreeting : WORKFLOW_NAV.find((item) => item.id === view)?.label}
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">Plan | Study | Capture | Review | Reflect</p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap lg:justify-end">
+            <div className="px-3 py-2 glass rounded-xl min-w-[132px]">
+              <p className="text-[11px] leading-tight text-slate-500 font-semibold">{t.currentTime}</p>
+              <p className="text-xs text-slate-700 font-bold">{currentTimeLabel}</p>
+            </div>
+            <div className="px-3 py-2 glass rounded-xl">
+              <p className="text-[11px] leading-tight text-slate-500 font-semibold">{authUser.name}</p>
+              <p className="text-[10px] text-slate-400">{authUser.email}</p>
+            </div>
+            <button onClick={toggleTheme} aria-label={t.theme} className="px-3 py-2 glass rounded-xl text-xs font-semibold inline-flex items-center gap-1.5">
+              {theme === 'dark' ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-indigo-500" />}
+              {t.theme}: {theme === 'dark' ? t.dark : t.light}
+            </button>
+            <Languages size={16} className="text-sky-500" />
+            <select value={lang} onChange={(e) => setLang(e.target.value)} aria-label={t.language} className="px-2.5 py-2 glass rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-sky-400/30">
+              {Object.entries(LANG_META).map(([k, v]) => <option key={k} value={k}>{v.flag} {v.name}</option>)}
+            </select>
+            <button onClick={logout} className="px-3 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(135deg, #0EA5E9 0%, #1D4ED8 100%)' }}>
+              Dang xuat
+            </button>
+          </div>
+        </header>
+
+        {view === 'reflect' && (
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 anim-tab">
+            <div className="xl:col-span-2 rounded-3xl p-7 md:p-9 text-white relative overflow-hidden shadow-2xl shadow-blue-950/25" style={{ background: 'linear-gradient(145deg, #0A1628 0%, #0F2A5F 60%, #0F3D7A 100%)' }}>
+              <div className="relative z-10">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse block" />
+                  <span className="text-[10px] font-bold text-sky-300 uppercase tracking-[2px]">Action Dashboard</span>
+                </div>
+                <h2 className="syne text-5xl font-bold leading-none">{progress}<span className="text-2xl text-blue-300">%</span></h2>
+                <p className="text-sky-200 text-sm mt-1 mb-5">{completedToday}/{todayTasks.length} task hom nay</p>
+
+                <div className="w-full h-2 rounded-full overflow-hidden mb-6" style={{ background: 'rgba(255,255,255,0.1)' }}>
+                  <div className="h-full rounded-full transition-all duration-700" style={{ width: `${progress}%`, background: 'linear-gradient(90deg, #38BDF8, #06B6D4)' }} />
+                </div>
+
+                <div className="flex gap-3">
+                  <Stat label="Overdue" value={overdueTasks.length} />
+                  <Stat label="Review Due" value={reviewDueItems.length} />
+                  <Stat label="Exam Soon" value={upcomingExams.length ? `${upcomingExams[0].daysLeft}d` : '-'} />
+                </div>
+              </div>
+              <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full opacity-20" style={{ background: 'radial-gradient(circle, #38BDF8, transparent)' }} />
+              <div className="absolute right-12 -bottom-10 w-40 h-40 rounded-full opacity-15" style={{ background: 'radial-gradient(circle, #06B6D4, transparent)' }} />
+            </div>
+
+            <div className="glass rounded-3xl p-5 space-y-3 shadow-sm">
+              <h3 className="syne font-bold text-[#0A1628]">Ra quyet dinh hom nay</h3>
+              <div className="rounded-xl border border-sky-100 p-3">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-sky-600">Hoc gi truoc?</p>
+                {nextTaskRecommendation ? (
+                  <>
+                    <p className="font-semibold text-sm mt-1">{getTaskTitle(nextTaskRecommendation)}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Due {formatDateFromKey(nextTaskRecommendation.dueDateKey)} · {nextTaskRecommendation.priority}</p>
+                    <button onClick={() => setView('plan')} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">Mo Planner</button>
+                  </>
+                ) : <p className="text-sm text-slate-500 mt-1">Khong con viec mo.</p>}
+              </div>
+
+              <div className="rounded-xl border border-rose-100 p-3">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-rose-600">Viec tre han</p>
+                <p className="text-2xl syne">{overdueTasks.length}</p>
+                <button onClick={() => { setView('plan'); setTaskFilters((prev) => ({ ...prev, overdueOnly: true })); }} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-rose-100 text-rose-700 font-semibold">Xu ly ngay</button>
+              </div>
+            </div>
+
+            <div className="xl:col-span-2 glass rounded-3xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="syne font-bold text-[#0A1628]">Nhip mon hoc va hieu suat tuan</h3>
+                <TrendingUp size={16} className="text-sky-500" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-2xl border border-sky-100 p-4">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Mon dang tut nhip</p>
+                  <div className="space-y-2">
+                    {laggingSubjects.map((item) => (
+                      <div key={item.subject} className="flex items-center justify-between">
+                        <span className="text-sm font-medium">{categoryLabel(item.subject)}</span>
+                        <span className="text-xs text-slate-500">{item.completion}% · {item.minutes}m</span>
+                      </div>
+                    ))}
+                    {!laggingSubjects.length && <p className="text-sm text-slate-400">Khong co du lieu.</p>}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-sky-100 p-4">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Xu huong tuan nay</p>
+                  <p className="text-sm text-slate-700">Task completed: <b>{weeklyStats.thisWeekDone}</b> ({weeklyStats.taskDelta >= 0 ? '+' : ''}{weeklyStats.taskDelta} vs last week)</p>
+                  <p className="text-sm text-slate-700 mt-2">Study minutes: <b>{weeklyStats.thisWeekMinutes}</b> ({weeklyStats.minuteDelta >= 0 ? '+' : ''}{weeklyStats.minuteDelta})</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="glass rounded-3xl p-6 shadow-sm space-y-3">
+              <h3 className="syne font-bold text-[#0A1628]">Risk Radar</h3>
+              <div className="rounded-xl border border-sky-100 p-3">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Can on lai</p>
+                <p className="text-2xl syne">{reviewDueItems.length}</p>
+                <button onClick={() => setView('review')} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">Review ngay</button>
+              </div>
+              <div className="rounded-xl border border-sky-100 p-3">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Xung dot tuan toi</p>
+                {nextWeekConflicts.length ? nextWeekConflicts.map((item) => (
+                  <p key={item.dateKey} className="text-sm mt-1">{formatDateFromKey(item.dateKey)} · {item.minutes}m</p>
+                )) : <p className="text-sm text-slate-500 mt-1">Khong co xung dot lon.</p>}
+              </div>
+              <div className="rounded-xl border border-sky-100 p-3">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Exam countdown</p>
+                {upcomingExams.slice(0, 2).map((exam) => (
+                  <p key={exam.id} className="text-sm mt-1">{exam.title} · {exam.daysLeft} ngay</p>
+                ))}
+                {!upcomingExams.length && <p className="text-sm text-slate-500 mt-1">Chua co ky thi.</p>}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === 'plan' && (
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 anim-tab">
+            <div className="xl:col-span-3 glass rounded-3xl p-6 md:p-8 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <h2 className="syne text-xl font-bold text-[#0A1628]">Planner System</h2>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setCalendarView('month')} className={`px-2.5 py-1.5 text-xs rounded-lg font-semibold ${calendarView === 'month' ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-700'}`}>Month</button>
+                  <button onClick={() => setCalendarView('week')} className={`px-2.5 py-1.5 text-xs rounded-lg font-semibold ${calendarView === 'week' ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-700'}`}>Week Drag</button>
+                </div>
+              </div>
+
+              {calendarView === 'month' ? (
+                <>
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="syne text-lg font-bold text-[#0A1628]">{formatDate(curMonth, { month: 'long', year: 'numeric' })}</h3>
+                    <div className="flex gap-1">
+                      {[ChevronLeft, ChevronRight].map((Arrow, i) => (
+                        <button key={i} onClick={() => setCurMonth(new Date(curMonth.getFullYear(), curMonth.getMonth() + (i ? 1 : -1), 1))} className="w-8 h-8 flex items-center justify-center text-slate-500 hover:bg-sky-100 hover:text-sky-600 rounded-xl transition-colors">
+                          <Arrow size={17} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-7 text-center mb-1">
+                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
+                      <div key={d} className="text-[10px] font-bold text-slate-400 py-2 uppercase tracking-wider">{d}</div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1">
+                    {calDays.map((date, idx) => {
+                      if (!date) return <div key={idx} />;
+                      const key = toDateKey(date);
+                      const isSelected = key === toDateKey(selDate);
+                      const isToday = key === todayKey;
+                      const dayTasks = tasks.filter((task) => task.dateKey === key && !task.archived);
+                      const overdueCount = dayTasks.filter((task) => !task.completed && task.dueDateKey < todayKey).length;
+                      return (
+                        <button key={key} onClick={() => { setSelDate(date); setPlannerMode('day'); }} className={`aspect-square flex flex-col items-center justify-center rounded-xl text-sm font-medium transition-all duration-200 ${isSelected ? 'text-white shadow-lg scale-110 z-10' : isToday ? 'text-sky-600 font-bold bg-sky-50' : 'text-slate-600 hover:bg-sky-50/80 hover:text-sky-600'}`} style={isSelected ? { background: 'linear-gradient(135deg, #0EA5E9, #1D4ED8)', boxShadow: '0 4px 14px #0EA5E955' } : {}}>
+                          {date.getDate()}
+                          {Boolean(dayTasks.length) && <div className={`w-1.5 h-1.5 rounded-full mt-1 ${isSelected ? 'bg-white/60' : overdueCount ? 'bg-rose-500' : 'bg-sky-500'}`} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
+                  {weekDays.map((date) => {
+                    const dateKey = toDateKey(date);
+                    const dayTasks = tasks
+                      .filter((task) => task.dateKey === dateKey && !task.archived)
+                      .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+                    return (
+                      <div
+                        key={dateKey}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => {
+                          const dragId = dragTaskIdRef.current;
+                          if (!dragId) return;
+                          setTasks((prev) => prev.map((task) => task.id === dragId ? { ...task, dateKey, updatedAt: isoNow() } : task));
+                          dragTaskIdRef.current = null;
+                        }}
+                        className="rounded-2xl border border-sky-100 p-2 min-h-[180px]"
+                      >
+                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">{formatDate(date, { weekday: 'short', day: '2-digit' })}</p>
+                        <div className="space-y-1.5">
+                          {dayTasks.map((task) => (
+                            <div key={task.id} draggable onDragStart={() => { dragTaskIdRef.current = task.id; }} className="rounded-lg bg-sky-50 border border-sky-100 p-2 cursor-grab active:cursor-grabbing">
+                              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mb-1">
+                                <GripVertical size={11} />
+                                <span>{task.time}</span>
+                              </div>
+                              <p className="text-xs font-semibold line-clamp-2">{getTaskTitle(task)}</p>
+                            </div>
+                          ))}
+                          {!dayTasks.length && <p className="text-[11px] text-slate-400">No task</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="xl:col-span-2 space-y-5">
+              <div className="glass rounded-3xl p-5 shadow-sm">
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <h3 className="syne font-bold text-[#0A1628]">Task Engine</h3>
+                  <span className="text-[10px] font-bold bg-sky-100 text-sky-600 px-2 py-1 rounded-full">{baseVisibleTasks.length} VISIBLE</span>
+                </div>
+
+                <form onSubmit={addTask} className="space-y-2 mb-4">
+                  <input value={newTask.title} onChange={(e) => setNewTask((prev) => ({ ...prev, title: e.target.value }))} placeholder="Them task..." className="w-full px-3 py-2.5 bg-sky-50/60 border border-sky-100 rounded-xl text-sm focus:outline-none" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="time" value={newTask.time} onChange={(e) => setNewTask((prev) => ({ ...prev, time: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs" />
+                    <input type="date" value={newTask.dueDateKey} onChange={(e) => setNewTask((prev) => ({ ...prev, dueDateKey: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs" />
+                    <select value={newTask.priority} onChange={(e) => setNewTask((prev) => ({ ...prev, priority: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs">
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                    <select value={newTask.recurring} onChange={(e) => setNewTask((prev) => ({ ...prev, recurring: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs">
+                      <option value="none">No repeat</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                    <select value={newTask.subject} onChange={(e) => setNewTask((prev) => ({ ...prev, subject: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs">
+                      {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
+                    </select>
+                    <input type="number" min="15" step="15" value={newTask.duration} onChange={(e) => setNewTask((prev) => ({ ...prev, duration: Number(e.target.value || 15) }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs" placeholder="Duration" />
+                  </div>
+                  <input type="datetime-local" value={newTask.reminderAt} onChange={(e) => setNewTask((prev) => ({ ...prev, reminderAt: e.target.value }))} className="w-full px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs" />
+                  <button type="submit" className="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>
+                    <Plus size={14} className="inline mr-1" /> Add Task
+                  </button>
+                </form>
+
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {[
+                    { id: 'today', label: 'Today' },
+                    { id: 'week', label: 'This Week' },
+                    { id: 'upcoming', label: 'Upcoming' },
+                    { id: 'day', label: 'Selected Day' },
+                  ].map((mode) => (
+                    <button key={mode.id} onClick={() => setPlannerMode(mode.id)} className={`px-2 py-1.5 rounded-lg text-xs font-semibold ${plannerMode === mode.id ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-700'}`}>
+                      {mode.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="space-y-2 mb-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <select value={taskFilters.status} onChange={(e) => setTaskFilters((prev) => ({ ...prev, status: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                      <option value="open">Open</option>
+                      <option value="done">Done</option>
+                      <option value="all">All</option>
+                    </select>
+                    <select value={taskFilters.priority} onChange={(e) => setTaskFilters((prev) => ({ ...prev, priority: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                      <option value="all">All priorities</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                    <select value={taskFilters.subject} onChange={(e) => setTaskFilters((prev) => ({ ...prev, subject: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                      <option value="all">All subjects</option>
+                      {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
+                    </select>
+                    <select value={taskFilters.sort} onChange={(e) => setTaskFilters((prev) => ({ ...prev, sort: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                      <option value="dueAsc">Sort due</option>
+                      <option value="priority">Sort priority</option>
+                      <option value="duration">Sort duration</option>
+                      <option value="updated">Sort updated</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input value={taskFilters.query} onChange={(e) => setTaskFilters((prev) => ({ ...prev, query: e.target.value }))} placeholder="Search task..." className="flex-1 px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs" />
+                    <label className="text-xs inline-flex items-center gap-1.5">
+                      <input type="checkbox" checked={taskFilters.overdueOnly} onChange={(e) => setTaskFilters((prev) => ({ ...prev, overdueOnly: e.target.checked }))} />
+                      Overdue
+                    </label>
+                  </div>
+                </div>
+
+                {selectedTaskIds.length > 0 && (
+                  <div className="mb-3 rounded-xl border border-sky-100 bg-sky-50 p-2.5 flex flex-wrap gap-1.5 items-center">
+                    <span className="text-xs font-semibold text-sky-700">{selectedTaskIds.length} selected</span>
+                    <button onClick={() => bulkTaskAction('complete')} className="px-2 py-1 text-[11px] rounded bg-emerald-100 text-emerald-700">Complete</button>
+                    <button onClick={() => bulkTaskAction('archive')} className="px-2 py-1 text-[11px] rounded bg-slate-200 text-slate-700">Archive</button>
+                    <button onClick={() => bulkTaskAction('tomorrow')} className="px-2 py-1 text-[11px] rounded bg-sky-100 text-sky-700">Tomorrow</button>
+                    <button onClick={() => bulkTaskAction('nextWeek')} className="px-2 py-1 text-[11px] rounded bg-indigo-100 text-indigo-700">Next week</button>
+                    <button onClick={() => bulkTaskAction('delete')} className="px-2 py-1 text-[11px] rounded bg-rose-100 text-rose-700">Delete</button>
+                  </div>
+                )}
+
+                <div className="max-h-[520px] overflow-y-auto scroll space-y-2">
+                  {Object.entries(tasksBySubject).map(([subject, subjectTasks]) => (
+                    <div key={subject} className="rounded-xl border border-sky-100/70 p-2.5">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">{categoryLabel(subject)}</p>
+                      <div className="space-y-2">
+                        {subjectTasks.map((task) => {
+                          const overdue = !task.completed && task.dueDateKey < todayKey;
+                          const isEditing = editingTaskId === task.id;
+                          return (
+                            <div key={task.id} className={`group rounded-xl border p-2.5 ${task.completed ? 'bg-slate-50 border-slate-200 opacity-70' : 'bg-white/80 border-sky-100'}`}>
+                              {isEditing ? (
+                                <div className="space-y-2">
+                                  <input value={taskDraft.task} onChange={(e) => setTaskDraft((prev) => ({ ...prev, task: e.target.value }))} className="w-full px-2 py-1.5 text-xs rounded border border-slate-300" />
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <input type="time" value={taskDraft.time || '09:00'} onChange={(e) => setTaskDraft((prev) => ({ ...prev, time: e.target.value }))} className="px-2 py-1.5 text-xs rounded border border-slate-300" />
+                                    <input type="date" value={taskDraft.dueDateKey} onChange={(e) => setTaskDraft((prev) => ({ ...prev, dueDateKey: e.target.value }))} className="px-2 py-1.5 text-xs rounded border border-slate-300" />
+                                    <select value={taskDraft.priority} onChange={(e) => setTaskDraft((prev) => ({ ...prev, priority: e.target.value }))} className="px-2 py-1.5 text-xs rounded border border-slate-300">
+                                      <option value="low">Low</option>
+                                      <option value="medium">Medium</option>
+                                      <option value="high">High</option>
+                                    </select>
+                                    <select value={taskDraft.recurring} onChange={(e) => setTaskDraft((prev) => ({ ...prev, recurring: e.target.value }))} className="px-2 py-1.5 text-xs rounded border border-slate-300">
+                                      <option value="none">No repeat</option>
+                                      <option value="daily">Daily</option>
+                                      <option value="weekly">Weekly</option>
+                                      <option value="monthly">Monthly</option>
+                                    </select>
+                                  </div>
+                                  <div className="flex gap-2 justify-end">
+                                    <button onClick={() => { setEditingTaskId(null); setTaskDraft(null); }} className="px-2 py-1 text-xs rounded bg-slate-100">Cancel</button>
+                                    <button onClick={saveTaskEdit} className="px-2 py-1 text-xs rounded bg-sky-600 text-white">Save</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="flex items-start gap-2">
+                                    <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelect(task.id)} className="mt-1" />
+                                    <button onClick={() => toggleTask(task.id)} className={`w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0 ${task.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 hover:border-sky-400'}`}>
+                                      {task.completed && <Check size={11} strokeWidth={3.5} className="text-white" />}
+                                    </button>
+                                    <div className="flex-1 min-w-0">
+                                      <p className={`text-sm font-medium ${task.completed ? 'strike text-slate-400' : 'text-slate-800'}`}>{getTaskTitle(task)}</p>
+                                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${PRIORITY_META[task.priority]?.cls || PRIORITY_META.medium.cls}`}>{PRIORITY_META[task.priority]?.label || 'Medium'}</span>
+                                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-sky-100 text-sky-700">Due {formatDateFromKey(task.dueDateKey)}</span>
+                                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600">{task.duration}m</span>
+                                        {task.recurring !== 'none' && <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-indigo-100 text-indigo-700">{task.recurring}</span>}
+                                        {overdue && <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-rose-100 text-rose-700 inline-flex items-center gap-1"><AlertTriangle size={10} /> overdue</span>}
+                                      </div>
+                                      <p className="text-[11px] text-slate-500 mt-1">{task.time} · Scheduled {formatDateFromKey(task.dateKey)} · Reminder {task.reminderAt ? formatDateTime(task.reminderAt) : '-'}</p>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-2 flex flex-wrap gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => openTaskEdit(task)} className="px-2 py-1 text-[11px] rounded bg-sky-100 text-sky-700">Edit</button>
+                                    <button onClick={() => duplicateTask(task)} className="px-2 py-1 text-[11px] rounded bg-indigo-100 text-indigo-700">Duplicate</button>
+                                    <button onClick={() => archiveTask(task.id)} className="px-2 py-1 text-[11px] rounded bg-slate-200 text-slate-700">Archive</button>
+                                    <button onClick={() => quickMoveTask(task.id, 1)} className="px-2 py-1 text-[11px] rounded bg-cyan-100 text-cyan-700">Tomorrow</button>
+                                    <button onClick={() => quickMoveTask(task.id, 7)} className="px-2 py-1 text-[11px] rounded bg-blue-100 text-blue-700">Next week</button>
+                                    <button onClick={() => deleteTask(task.id)} className="px-2 py-1 text-[11px] rounded bg-rose-100 text-rose-700">Delete</button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+
+                  {!baseVisibleTasks.length && (
+                    <div className="text-center py-10 opacity-40">
+                      <ListChecks size={34} strokeWidth={1.2} className="mx-auto mb-2 text-slate-300" />
+                      <p className="text-sm text-slate-500">Khong co task theo filter hien tai.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="glass rounded-3xl p-5 shadow-sm">
+                <h3 className="syne font-bold text-[#0A1628] mb-2">Upcoming List</h3>
+                <div className="space-y-2">
+                  {upcomingTasks.map((task) => (
+                    <div key={task.id} className="rounded-xl border border-sky-100 px-3 py-2">
+                      <p className="text-sm font-semibold">{getTaskTitle(task)}</p>
+                      <p className="text-[11px] text-slate-500">{formatDateFromKey(task.dateKey)} · due {formatDateFromKey(task.dueDateKey)} · {task.time}</p>
+                    </div>
+                  ))}
+                  {!upcomingTasks.length && <p className="text-sm text-slate-500">Khong co upcoming task.</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === 'study' && (
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 anim-tab">
+            <div className="xl:col-span-2 glass rounded-3xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="syne text-xl font-bold text-[#0A1628]">Study Sessions</h2>
+                <Timer size={18} className="text-sky-500" />
+              </div>
+
+              <form onSubmit={addStudySession} className="grid grid-cols-1 md:grid-cols-5 gap-2 mb-4">
+                <select value={newSession.subject} onChange={(e) => setNewSession((prev) => ({ ...prev, subject: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
+                  {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
+                </select>
+                <input type="number" min="15" step="15" value={newSession.duration} onChange={(e) => setNewSession((prev) => ({ ...prev, duration: Number(e.target.value || 15) }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" placeholder="Minutes" />
+                <input type="date" value={newSession.dateKey} onChange={(e) => setNewSession((prev) => ({ ...prev, dateKey: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
+                <select value={newSession.focus} onChange={(e) => setNewSession((prev) => ({ ...prev, focus: Number(e.target.value) }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
+                  {[1, 2, 3, 4, 5].map((f) => <option key={f} value={f}>Focus {f}/5</option>)}
+                </select>
+                <button type="submit" className="px-4 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>
+                  Add Session
+                </button>
+              </form>
+
+              <div className="space-y-2 max-h-[420px] overflow-y-auto scroll">
+                {studySessions.map((session) => (
+                  <div key={session.id} className="rounded-xl border border-sky-100 p-3 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
+                      <BookMarked size={15} />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold">{categoryLabel(session.subject)} · {session.duration}m</p>
+                      <p className="text-[11px] text-slate-500">{formatDateFromKey(session.dateKey)} · focus {session.focus}/5</p>
+                    </div>
+                    <button onClick={() => setStudySessions((prev) => prev.filter((s) => s.id !== session.id))} className="text-slate-300 hover:text-rose-500">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+                {!studySessions.length && <p className="text-sm text-slate-500">Chua co session nao.</p>}
+              </div>
+            </div>
+
+            <div className="space-y-5">
+              <div className="glass rounded-3xl p-5 shadow-sm">
+                <h3 className="syne font-bold text-[#0A1628] mb-3">Goals</h3>
+                <form onSubmit={addGoal} className="space-y-2 mb-3">
+                  <input value={newGoal.title} onChange={(e) => setNewGoal((prev) => ({ ...prev, title: e.target.value }))} placeholder="Goal title" className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select value={newGoal.subject} onChange={(e) => setNewGoal((prev) => ({ ...prev, subject: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
+                      {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
+                    </select>
+                    <input type="date" value={newGoal.targetDateKey} onChange={(e) => setNewGoal((prev) => ({ ...prev, targetDateKey: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
+                  </div>
+                  <button type="submit" className="w-full px-4 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>Add Goal</button>
+                </form>
+
+                <div className="space-y-2 max-h-[220px] overflow-y-auto scroll">
+                  {goals.map((goal) => (
+                    <div key={goal.id} className="rounded-xl border border-sky-100 p-2.5">
+                      <p className="text-sm font-semibold">{goal.title}</p>
+                      <p className="text-[11px] text-slate-500">{categoryLabel(goal.subject)} · target {formatDateFromKey(goal.targetDateKey)}</p>
+                      <button onClick={() => setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, completed: !g.completed } : g))} className={`mt-1 px-2 py-1 text-[11px] rounded ${goal.completed ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{goal.completed ? 'Done' : 'Mark done'}</button>
+                    </div>
+                  ))}
+                  {!goals.length && <p className="text-sm text-slate-500">Them muc tieu de giu nhip hoc.</p>}
+                </div>
+              </div>
+
+              <div className="glass rounded-3xl p-5 shadow-sm">
+                <h3 className="syne font-bold text-[#0A1628] mb-3">Progress by Subject</h3>
+                <div className="space-y-2">
+                  {subjectProgress.map((item) => (
+                    <div key={item.subject}>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span>{categoryLabel(item.subject)}</span>
+                        <span>{item.completion}% · {item.minutes}m</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                        <div className="h-full rounded-full bg-sky-500" style={{ width: `${item.completion}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === 'capture' && (
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 anim-tab">
+            <div className="xl:col-span-3">
+              <div className="glass rounded-3xl p-5 shadow-sm sticky top-4">
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[2.5px] mb-3">Categories & Tags</h3>
+                <div className="space-y-1 mb-4">
+                  {['all', ...categories].map((cat) => {
+                    const cc = catColor(cat);
+                    const count = cat === 'all' ? notes.length : notes.filter((note) => note.category === cat).length;
+                    const active = noteFilters.category === cat;
+                    return (
+                      <div key={cat} onClick={() => setNoteFilters((prev) => ({ ...prev, category: cat }))} className={`group flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-all ${active ? 'text-white' : 'text-slate-600 hover:bg-sky-50/70'}`} style={active ? { background: 'linear-gradient(90deg, #0A1628, #0F2A5F)' } : {}}>
+                        <div className="flex items-center gap-2.5">
+                          {cat !== 'all' && <span className={`w-2 h-2 rounded-full shrink-0 ${active ? 'bg-sky-300' : cc.dot}`} />}
+                          <span className="text-sm font-medium">{cat === 'all' ? t.allFilter : categoryLabel(cat)}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-xs font-bold ${active ? 'text-sky-300' : 'text-slate-400'}`}>{count}</span>
+                          {cat !== 'all' && cat !== 'general' && !active && (
+                            <button onClick={(e) => { e.stopPropagation(); removeCategory(cat); }} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 transition-all">
+                              <X size={12} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="border-t border-sky-100 pt-3 flex gap-1.5 mb-3">
+                  <input value={newCatInput} onChange={(e) => setNewCatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCategory()} placeholder={t.addCategory} className="flex-1 px-2.5 py-2 bg-sky-50/60 border border-sky-100 rounded-lg text-xs" />
+                  <button onClick={addCategory} className="w-8 h-8 text-white rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#38BDF8,#0284C7)' }}>
+                    <Plus size={14} strokeWidth={3} />
+                  </button>
+                </div>
+
+                <div className="space-y-2 mb-3">
+                  <input value={searchQ} onChange={(e) => setSearchQ(e.target.value)} placeholder="Search notes..." className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs" />
+                  <select value={noteFilters.tag} onChange={(e) => setNoteFilters((prev) => ({ ...prev, tag: e.target.value }))} className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                    <option value="all">All tags</option>
+                    {allTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+                  </select>
+                  <select value={noteFilters.sort} onChange={(e) => setNoteFilters((prev) => ({ ...prev, sort: e.target.value }))} className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                    <option value="updated">Updated time</option>
+                    <option value="title">Title</option>
+                  </select>
+                  <label className="text-xs inline-flex items-center gap-1.5">
+                    <input type="checkbox" checked={noteFilters.archived} onChange={(e) => setNoteFilters((prev) => ({ ...prev, archived: e.target.checked }))} />
+                    Show archived notes
+                  </label>
+                </div>
+
+                <div className="text-xs text-slate-500">Split-view note browsing: list ben trai, editor ben phai.</div>
+              </div>
+            </div>
+
+            <div className="xl:col-span-4 space-y-4">
+              <div className="glass rounded-3xl p-5 shadow-sm">
+                <h3 className="syne font-bold text-[#0A1628] mb-3">Quick Capture</h3>
+                <input value={newNote.title} onChange={(e) => setNewNote((prev) => ({ ...prev, title: e.target.value }))} placeholder={t.docTitle} className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-sm mb-2" />
+                <textarea value={newNote.content} onChange={(e) => setNewNote((prev) => ({ ...prev, content: e.target.value }))} rows={4} placeholder="Markdown ho tro co ban..." className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-sm mb-2" />
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <select value={newNote.category} onChange={(e) => setNewNote((prev) => ({ ...prev, category: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
+                    {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
+                  </select>
+                  <input value={newNote.tagsInput} onChange={(e) => setNewNote((prev) => ({ ...prev, tagsInput: e.target.value }))} placeholder="tags: exam, formula" className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
+                </div>
+                <input value={newNote.attachmentInput} onChange={(e) => setNewNote((prev) => ({ ...prev, attachmentInput: e.target.value }))} placeholder="Attachment URL / filename" className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs mb-2" />
+                <button onClick={addNote} disabled={!newNote.title.trim()} className="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40" style={{ background: 'linear-gradient(135deg, #0A1628, #0F2A5F)' }}>
+                  Save Note
+                </button>
+              </div>
+
+              <div className="space-y-3 max-h-[640px] overflow-y-auto scroll pr-1">
+                {displayedNotes.map((note) => {
+                  const cc = catColor(note.category);
+                  const active = selectedNote?.id === note.id;
+                  return (
+                    <div key={note.id} onClick={() => setSelectedNoteId(note.id)} className={`glass rounded-2xl p-4 cursor-pointer transition-all border ${active ? 'border-sky-400 shadow-md' : 'border-sky-100'}`}>
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md ${cc.pill}`}>{categoryLabel(note.category)}</span>
+                          {note.pinned && <Pin size={12} className="text-amber-500" />}
+                        </div>
+                        <span className="text-[10px] text-slate-400">{formatDateTime(note.updatedAt)}</span>
+                      </div>
+                      <h4 className="syne text-sm font-bold text-slate-900 mb-1 line-clamp-1">{getNoteTitle(note)}</h4>
+                      <p className="text-xs text-slate-500 line-clamp-2">{summarizeNote(getNoteContent(note))}</p>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {(note.tags || []).map((tag) => <span key={tag} className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-600">#{tag}</span>)}
+                      </div>
+                    </div>
+                  );
+                })}
+                {!displayedNotes.length && (
+                  <div className="text-center py-20 opacity-40">
+                    <BookOpen size={40} strokeWidth={1} className="text-slate-300 mx-auto mb-3" />
+                    <p className="text-slate-500 font-semibold">Khong co note phu hop.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="xl:col-span-5">
+              <div className="glass rounded-3xl p-5 shadow-sm min-h-[760px]">
+                {selectedNote ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <h3 className="syne font-bold text-[#0A1628]">Note Workspace</h3>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button onClick={() => togglePinNote(selectedNote.id)} className="px-2 py-1 text-[11px] rounded bg-amber-100 text-amber-700 inline-flex items-center gap-1">{selectedNote.pinned ? <PinOff size={12} /> : <Pin size={12} />}{selectedNote.pinned ? 'Unpin' : 'Pin'}</button>
+                        <button onClick={() => duplicateNote(selectedNote)} className="px-2 py-1 text-[11px] rounded bg-indigo-100 text-indigo-700 inline-flex items-center gap-1"><Copy size={12} />Duplicate</button>
+                        <button onClick={() => archiveNote(selectedNote.id, !selectedNote.archived)} className="px-2 py-1 text-[11px] rounded bg-slate-100 text-slate-700 inline-flex items-center gap-1"><Archive size={12} />{selectedNote.archived ? 'Unarchive' : 'Archive'}</button>
+                        <button onClick={() => openNoteEdit(selectedNote)} className="px-2 py-1 text-[11px] rounded bg-sky-100 text-sky-700">Edit</button>
+                        <button onClick={() => deleteNote(selectedNote.id)} className="px-2 py-1 text-[11px] rounded bg-rose-100 text-rose-700 inline-flex items-center gap-1"><Trash2 size={12} />Delete</button>
+                      </div>
+                    </div>
+
+                    {editingNoteId === selectedNote.id ? (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <input value={noteDraft.title} onChange={(e) => setNoteDraft((prev) => ({ ...prev, title: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm" />
+                          <textarea value={noteDraft.content} onChange={(e) => setNoteDraft((prev) => ({ ...prev, content: e.target.value }))} rows={12} className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm" />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input value={noteDraft.tagsInput} onChange={(e) => setNoteDraft((prev) => ({ ...prev, tagsInput: e.target.value }))} placeholder="tags" className="px-3 py-2 rounded-xl border border-slate-300 text-xs" />
+                            <input value={noteDraft.attachmentInput} onChange={(e) => setNoteDraft((prev) => ({ ...prev, attachmentInput: e.target.value }))} placeholder="new attachment" className="px-3 py-2 rounded-xl border border-slate-300 text-xs" />
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                            <button onClick={() => { setEditingNoteId(null); setNoteDraft(null); }} className="px-3 py-1.5 text-xs rounded bg-slate-100">Cancel</button>
+                            <button onClick={saveNoteEdit} className="px-3 py-1.5 text-xs rounded bg-sky-600 text-white">Save</button>
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-sky-100 p-3 bg-white/70">
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Markdown preview / summary</p>
+                          <h4 className="syne font-bold mb-2">{noteDraft.title}</h4>
+                          <p className="text-sm whitespace-pre-wrap text-slate-700">{noteDraft.content}</p>
+                          <div className="mt-4 p-2 rounded-lg bg-sky-50 text-xs text-sky-700">Summary: {summarizeNote(noteDraft.content)}</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div className="rounded-2xl border border-sky-100 p-4 bg-white/70">
+                          <h4 className="syne text-lg font-bold mb-2">{getNoteTitle(selectedNote)}</h4>
+                          <p className="text-sm whitespace-pre-wrap text-slate-700 leading-relaxed">{getNoteContent(selectedNote)}</p>
+                          <div className="mt-3 flex flex-wrap gap-1">
+                            {(selectedNote.tags || []).map((tag) => <span key={tag} className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-600">#{tag}</span>)}
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="rounded-2xl border border-sky-100 p-3">
+                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Backlinks</p>
+                            {selectedNoteBacklinks.length ? selectedNoteBacklinks.map((title) => <p key={title} className="text-sm">[[{title}]]</p>) : <p className="text-sm text-slate-500">Chua co backlinks.</p>}
+                          </div>
+
+                          <div className="rounded-2xl border border-sky-100 p-3">
+                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Attachments</p>
+                            {(selectedNote.attachments || []).length ? selectedNote.attachments.map((att, idx) => <p key={`${att}-${idx}`} className="text-sm text-slate-700">• {att}</p>) : <p className="text-sm text-slate-500">Chua co attachment.</p>}
+                          </div>
+
+                          <div className="rounded-2xl border border-sky-100 p-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Flashcards</p>
+                              <button onClick={() => convertNoteToFlashcards(selectedNote.id)} className="px-2 py-1 text-[11px] rounded bg-indigo-100 text-indigo-700">Convert</button>
+                            </div>
+                            {(selectedNote.flashcards || []).length ? (
+                              <div className="space-y-1.5 max-h-[120px] overflow-y-auto scroll">
+                                {selectedNote.flashcards.map((card, idx) => (
+                                  <div key={`${card.question}-${idx}`} className="text-xs rounded-lg bg-slate-50 p-2">
+                                    <p className="font-semibold">Q: {card.question}</p>
+                                    <p className="text-slate-600">A: {card.answer}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : <p className="text-sm text-slate-500">Dung dong dang "Question: Answer" de convert.</p>}
+                          </div>
+
+                          <div className="rounded-2xl border border-sky-100 p-3">
+                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Version history</p>
+                            {(selectedNote.versions || []).length ? (
+                              <div className="space-y-1.5 max-h-[120px] overflow-y-auto scroll">
+                                {selectedNote.versions.map((ver, idx) => (
+                                  <div key={`${ver.updatedAt}-${idx}`} className="flex items-center justify-between text-xs rounded-lg bg-slate-50 p-2">
+                                    <span>{formatDateTime(ver.updatedAt)}</span>
+                                    <button onClick={() => restoreVersion(selectedNote.id, ver)} className="px-2 py-1 rounded bg-sky-100 text-sky-700">Restore</button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : <p className="text-sm text-slate-500">Chua co version nao.</p>}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-24 text-slate-500">Chon mot note de bat dau.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === 'review' && (
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 anim-tab">
+            <div className="xl:col-span-2 space-y-5">
+              <div className="glass rounded-3xl p-6 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="syne text-xl font-bold text-[#0A1628]">Revision Tracker</h2>
+                  <ClipboardList size={18} className="text-sky-500" />
+                </div>
+                <div className="space-y-2 max-h-[430px] overflow-y-auto scroll">
+                  {revisions.map((item) => {
+                    const due = item.nextReviewKey <= todayKey;
+                    return (
+                      <div key={item.id} className={`rounded-xl border p-3 ${due ? 'border-rose-200 bg-rose-50/70' : 'border-sky-100 bg-white/70'}`}>
+                        <p className="text-sm font-semibold">{item.question}</p>
+                        <p className="text-xs text-slate-500">{categoryLabel(item.subject)} · next {formatDateFromKey(item.nextReviewKey)} · interval {item.intervalDays}d</p>
+                        <details className="mt-1">
+                          <summary className="text-xs cursor-pointer text-sky-600">Show answer</summary>
+                          <p className="text-sm mt-1 text-slate-700">{item.answer}</p>
+                        </details>
+                        <div className="mt-2 flex gap-1.5">
+                          <button onClick={() => reviewRevision(item.id, true)} className="px-2 py-1 text-[11px] rounded bg-emerald-100 text-emerald-700">Remembered</button>
+                          <button onClick={() => reviewRevision(item.id, false)} className="px-2 py-1 text-[11px] rounded bg-amber-100 text-amber-700">Need review</button>
+                          <button onClick={() => setRevisions((prev) => prev.filter((r) => r.id !== item.id))} className="px-2 py-1 text-[11px] rounded bg-slate-100 text-slate-700">Remove</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {!revisions.length && <p className="text-sm text-slate-500">Chua co revision item. Convert tu notes de tao.</p>}
+                </div>
+              </div>
+
+              <div className="glass rounded-3xl p-6 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="syne font-bold text-[#0A1628]">Weekly Review</h3>
+                  <BarChart3 size={18} className="text-sky-500" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-2xl border border-sky-100 p-4">
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Execution</p>
+                    <p className="text-2xl syne mt-1">{weeklyStats.thisWeekDone}</p>
+                    <p className="text-sm text-slate-500">Tasks done this week ({weeklyStats.taskDelta >= 0 ? '+' : ''}{weeklyStats.taskDelta})</p>
+                  </div>
+                  <div className="rounded-2xl border border-sky-100 p-4">
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Deep Work</p>
+                    <p className="text-2xl syne mt-1">{weeklyStats.thisWeekMinutes}m</p>
+                    <p className="text-sm text-slate-500">Study minutes ({weeklyStats.minuteDelta >= 0 ? '+' : ''}{weeklyStats.minuteDelta})</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-5">
+              <div className="glass rounded-3xl p-5 shadow-sm">
+                <h3 className="syne font-bold text-[#0A1628] mb-3">Exam Countdown</h3>
+                <form onSubmit={addExam} className="space-y-2 mb-3">
+                  <input value={newExam.title} onChange={(e) => setNewExam((prev) => ({ ...prev, title: e.target.value }))} placeholder="Exam name" className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select value={newExam.subject} onChange={(e) => setNewExam((prev) => ({ ...prev, subject: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
+                      {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
+                    </select>
+                    <input type="date" value={newExam.dateKey} onChange={(e) => setNewExam((prev) => ({ ...prev, dateKey: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
+                  </div>
+                  <button type="submit" className="w-full px-4 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>Add exam</button>
+                </form>
+
+                <div className="space-y-2 max-h-[240px] overflow-y-auto scroll">
+                  {upcomingExams.map((exam) => (
+                    <div key={exam.id} className="rounded-xl border border-sky-100 p-3">
+                      <p className="text-sm font-semibold">{exam.title}</p>
+                      <p className="text-xs text-slate-500">{categoryLabel(exam.subject)} · {formatDateFromKey(exam.dateKey)}</p>
+                      <p className="text-xs mt-1 font-semibold text-sky-700">Con {exam.daysLeft} ngay</p>
+                    </div>
+                  ))}
+                  {!upcomingExams.length && <p className="text-sm text-slate-500">Chua co ky thi sap toi.</p>}
+                </div>
+              </div>
+
+              <div className="glass rounded-3xl p-5 shadow-sm">
+                <h3 className="syne font-bold text-[#0A1628] mb-2">Upcoming + Overdue</h3>
+                <div className="space-y-2 max-h-[280px] overflow-y-auto scroll">
+                  {overdueTasks.slice(0, 3).map((task) => (
+                    <div key={task.id} className="rounded-xl border border-rose-200 bg-rose-50/60 p-2.5">
+                      <p className="text-sm font-semibold">{getTaskTitle(task)}</p>
+                      <p className="text-xs text-rose-700">Overdue since {formatDateFromKey(task.dueDateKey)}</p>
+                    </div>
+                  ))}
+                  {upcomingTasks.slice(0, 3).map((task) => (
+                    <div key={task.id} className="rounded-xl border border-sky-100 p-2.5">
+                      <p className="text-sm font-semibold">{getTaskTitle(task)}</p>
+                      <p className="text-xs text-slate-500">{formatDateFromKey(task.dateKey)} · due {formatDateFromKey(task.dueDateKey)}</p>
+                    </div>
+                  ))}
+                  {!overdueTasks.length && !upcomingTasks.length && <p className="text-sm text-slate-500">Khong co item.</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {undoState && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[120]">
+          <div className="px-4 py-2 rounded-xl bg-[#0A1628] text-white text-sm shadow-xl border border-white/10 flex items-center gap-2">
+            <Undo2 size={14} />
+            <span>{undoLabel}</span>
+            <button onClick={undoDelete} className="px-2 py-1 text-xs rounded bg-sky-500/30">Undo</button>
+          </div>
+        </div>
+      )}
+
+      <div className="fixed bottom-24 md:bottom-8 right-4 md:right-8 z-[100]">
+        <div className={`absolute bottom-[68px] right-0 w-[300px] sm:w-[360px] bg-white rounded-2xl overflow-hidden flex flex-col border border-sky-100/60 shadow-2xl shadow-blue-900/20 transition-all duration-300 origin-bottom-right ${aiOpen ? 'scale-100 opacity-100 pointer-events-auto' : 'scale-90 opacity-0 pointer-events-none'}`}>
+          <div className="p-4 text-white flex items-center gap-3" style={{ background: 'linear-gradient(135deg, #0A1628 0%, #0F3D7A 100%)' }}>
+            <div className="w-8 h-8 rounded-full bg-sky-400/25 flex items-center justify-center">
+              <Bot size={16} className="text-sky-300" />
+            </div>
+            <div className="flex-1">
+              <p className="syne text-sm font-bold">BlueStudy AI</p>
+              <p className="text-[10px] text-sky-300">{t.aiHelper}</p>
+            </div>
+            <button onClick={() => setAiOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
+              <X size={15} />
+            </button>
+          </div>
+
+          <div className="h-[260px] overflow-y-auto p-3 space-y-3 scroll" style={{ background: '#F0F9FF88' }}>
+            {chatHistory.map((msg, idx) => (
+              <div key={idx} className={`flex gap-2 anim-fade ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${msg.role === 'user' ? 'bg-slate-200' : 'bg-sky-100'}`}>
+                  {msg.role === 'user' ? <User size={12} className="text-slate-500" /> : <Bot size={12} className="text-sky-600" />}
+                </div>
+                <div className={`px-3 py-2.5 rounded-2xl text-sm leading-relaxed max-w-[78%] ${msg.role === 'user' ? 'text-white rounded-tr-sm' : 'bg-white border border-sky-100/50 shadow-sm text-slate-700 rounded-tl-sm'}`} style={msg.role === 'user' ? { background: 'linear-gradient(135deg,#0A1628,#0F2A5F)' } : {}}>
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+            {aiLoading && (
+              <div className="flex gap-2">
+                <div className="w-6 h-6 rounded-full bg-sky-100 flex items-center justify-center shrink-0">
+                  <Bot size={12} className="text-sky-600" />
+                </div>
+                <div className="px-4 py-3 bg-white border border-sky-100/50 rounded-2xl rounded-tl-sm shadow-sm flex gap-1.5 items-center">
+                  <span className="w-2 h-2 rounded-full bg-sky-400 dot-1" />
+                  <span className="w-2 h-2 rounded-full bg-sky-400 dot-2" />
+                  <span className="w-2 h-2 rounded-full bg-sky-400 dot-3" />
+                </div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          <div className="p-3 border-t border-sky-100/50 bg-white">
+            <form onSubmit={handleAI} className="flex gap-2">
+              <input value={aiInput} onChange={(e) => setAiInput(e.target.value)} disabled={aiLoading} placeholder={t.aiPlaceholder} className="flex-1 px-3 py-2.5 bg-sky-50/60 border border-sky-100 rounded-xl text-sm focus:outline-none focus:border-sky-400 transition-all" />
+              <button type="submit" disabled={!aiInput.trim() || aiLoading} className="w-9 h-9 text-white rounded-xl flex items-center justify-center shrink-0 transition-all active:scale-90 disabled:opacity-40" style={{ background: 'linear-gradient(135deg,#38BDF8,#0284C7)' }}>
+                <Send size={15} />
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <button onClick={() => setAiOpen(!aiOpen)} className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center text-white shadow-2xl transition-all duration-300 ${aiOpen ? 'rotate-12 scale-95' : 'hover:scale-110'}`} style={aiOpen ? { background: '#1E293B' } : { background: 'linear-gradient(135deg, #38BDF8 0%, #1D4ED8 100%)', boxShadow: '0 8px 30px #0EA5E970' }}>
+          {aiOpen ? <X size={22} /> : <Sparkles size={22} strokeWidth={2} />}
+          {!aiOpen && <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white animate-pulse" />}
+        </button>
+      </div>
+    </div>
+  );
+}
