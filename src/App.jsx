@@ -205,7 +205,11 @@ export default function App() {
     setAuthUser(user);
     localStorage.setItem(AUTH_TOKEN_KEY, token);
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
-    await hydrateUserData(token);
+    try {
+      await hydrateUserData(token);
+    } catch {
+      userDataLoadedRef.current = true;
+    }
     setAuthReady(true);
   };
 

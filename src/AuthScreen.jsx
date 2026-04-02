@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { authApi } from './api';
 
 const boxStyle = {
@@ -11,20 +11,15 @@ export default function AuthScreen({ onAuthSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [backendReady, setBackendReady] = useState(true);
-  const [googleClientId, setGoogleClientId] = useState(import.meta.env.VITE_GOOGLE_CLIENT_ID || '');
-  const googleRef = useRef(null);
 
   useEffect(() => {
     let mounted = true;
 
     const bootstrap = async () => {
       try {
-        const [healthRes, configRes] = await Promise.all([authApi.health(), authApi.publicConfig()]);
+        const healthRes = await authApi.health();
         if (!mounted) return;
         setBackendReady(Boolean(healthRes?.ok));
-        if (!googleClientId && configRes?.googleClientId) {
-          setGoogleClientId(configRes.googleClientId);
-        }
       } catch {
         if (!mounted) return;
         setBackendReady(false);
@@ -35,51 +30,7 @@ export default function AuthScreen({ onAuthSuccess }) {
     return () => {
       mounted = false;
     };
-  }, [googleClientId]);
-
-  useEffect(() => {
-    if (!googleClientId || !backendReady) return;
-
-    const loadGoogle = () => {
-      if (!window.google?.accounts?.id || !googleRef.current) return;
-      window.google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: async (resp) => {
-          try {
-            setLoading(true);
-            setError('');
-            const data = await authApi.google(resp.credential);
-            await onAuthSuccess(data.token, data.user);
-          } catch (e) {
-            setError(e.message || 'Google sign-in failed');
-          } finally {
-            setLoading(false);
-          }
-        },
-      });
-      googleRef.current.innerHTML = '';
-      window.google.accounts.id.renderButton(googleRef.current, {
-        theme: 'outline',
-        size: 'large',
-        shape: 'pill',
-        text: 'signin_with',
-      });
-    };
-
-    const existing = document.querySelector('script[data-google-gsi="1"]');
-    if (existing) {
-      loadGoogle();
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.dataset.googleGsi = '1';
-    script.onload = loadGoogle;
-    document.body.appendChild(script);
-  }, [backendReady, googleClientId, onAuthSuccess]);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -172,27 +123,13 @@ export default function AuthScreen({ onAuthSuccess }) {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !backendReady}
               className="w-full py-3 rounded-xl text-white font-semibold disabled:opacity-60"
               style={{ background: 'linear-gradient(135deg, #0EA5E9 0%, #1D4ED8 100%)' }}
             >
               {loading ? 'Dang xu ly...' : mode === 'login' ? 'Dang nhap' : 'Tao tai khoan'}
             </button>
           </form>
-
-          <div className="my-5 flex items-center gap-3">
-            <div className="h-px bg-slate-200 flex-1" />
-            <span className="text-xs text-slate-400">or</span>
-            <div className="h-px bg-slate-200 flex-1" />
-          </div>
-
-          {googleClientId ? (
-            <div ref={googleRef} className="flex justify-center" />
-          ) : (
-            <p className="text-xs text-amber-600 bg-amber-50 p-3 rounded-xl">
-              Chua tim thay GOOGLE_CLIENT_ID. Hay them VITE_GOOGLE_CLIENT_ID hoac GOOGLE_CLIENT_ID trong .env.
-            </p>
-          )}
         </section>
       </div>
     </div>
