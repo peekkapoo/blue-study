@@ -67,6 +67,12 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/api/public-config', (_req, res) => {
+  res.json({
+    googleClientId: GOOGLE_CLIENT_ID || null,
+  });
+});
+
 app.post('/api/auth/register', async (req, res) => {
   const { name, email, password } = req.body || {};
   if (!name || !email || !password) {
@@ -189,7 +195,7 @@ app.put('/api/user-data', authRequired, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.use((err, _req, res) => {
+app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ message: 'Internal server error' });
 });

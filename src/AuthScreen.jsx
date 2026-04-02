@@ -10,12 +10,35 @@ export default function AuthScreen({ onAuthSuccess }) {
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [backendReady, setBackendReady] = useState(true);
+  const [googleClientId, setGoogleClientId] = useState(import.meta.env.VITE_GOOGLE_CLIENT_ID || '');
   const googleRef = useRef(null);
 
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  useEffect(() => {
+    let mounted = true;
+
+    const bootstrap = async () => {
+      try {
+        const [healthRes, configRes] = await Promise.all([authApi.health(), authApi.publicConfig()]);
+        if (!mounted) return;
+        setBackendReady(Boolean(healthRes?.ok));
+        if (!googleClientId && configRes?.googleClientId) {
+          setGoogleClientId(configRes.googleClientId);
+        }
+      } catch {
+        if (!mounted) return;
+        setBackendReady(false);
+      }
+    };
+
+    bootstrap();
+    return () => {
+      mounted = false;
+    };
+  }, [googleClientId]);
 
   useEffect(() => {
-    if (!googleClientId) return;
+    if (!googleClientId || !backendReady) return;
 
     const loadGoogle = () => {
       if (!window.google?.accounts?.id || !googleRef.current) return;
@@ -26,7 +49,7 @@ export default function AuthScreen({ onAuthSuccess }) {
             setLoading(true);
             setError('');
             const data = await authApi.google(resp.credential);
-            onAuthSuccess(data.token, data.user);
+            await onAuthSuccess(data.token, data.user);
           } catch (e) {
             setError(e.message || 'Google sign-in failed');
           } finally {
@@ -56,7 +79,7 @@ export default function AuthScreen({ onAuthSuccess }) {
     script.dataset.googleGsi = '1';
     script.onload = loadGoogle;
     document.body.appendChild(script);
-  }, [googleClientId, onAuthSuccess]);
+  }, [backendReady, googleClientId, onAuthSuccess]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -72,7 +95,7 @@ export default function AuthScreen({ onAuthSuccess }) {
         ? await authApi.register({ ...payload, name: form.name.trim() })
         : await authApi.login(payload);
 
-      onAuthSuccess(data.token, data.user);
+      await onAuthSuccess(data.token, data.user);
     } catch (err) {
       setError(err.message || 'Authentication failed');
     } finally {
@@ -141,6 +164,11 @@ export default function AuthScreen({ onAuthSuccess }) {
             />
 
             {error && <p className="text-sm text-red-500">{error}</p>}
+            {!backendReady && (
+              <p className="text-sm text-amber-700 bg-amber-50 rounded-xl px-3 py-2">
+                Backend dang tat. Hay chay npm run dev de bat ca frontend va backend.
+              </p>
+            )}
 
             <button
               type="submit"
@@ -162,7 +190,7 @@ export default function AuthScreen({ onAuthSuccess }) {
             <div ref={googleRef} className="flex justify-center" />
           ) : (
             <p className="text-xs text-amber-600 bg-amber-50 p-3 rounded-xl">
-              Chua cai VITE_GOOGLE_CLIENT_ID trong .env nen dang nhap Google tam thoi chua hien thi.
+              Chua tim thay GOOGLE_CLIENT_ID. Hay them VITE_GOOGLE_CLIENT_ID hoac GOOGLE_CLIENT_ID trong .env.
             </p>
           )}
         </section>
