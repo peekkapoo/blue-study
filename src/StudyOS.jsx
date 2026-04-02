@@ -32,6 +32,12 @@ import {
   Filter,
   ListChecks,
   Timer,
+  Play,
+  Pause,
+  SkipForward,
+  SlidersHorizontal,
+  Volume2,
+  VolumeX,
   Flag,
   RotateCw,
   Undo2,
@@ -230,6 +236,71 @@ const RECURRENCE_STEP = {
   monthly: 30,
 };
 
+const POMODORO_MODES = ['focus', 'short', 'long'];
+
+const DEFAULT_POMODORO_CONFIG = {
+  focusMinutes: 25,
+  shortBreakMinutes: 5,
+  longBreakMinutes: 15,
+  cyclesBeforeLongBreak: 4,
+  autoStartBreaks: false,
+  autoStartFocus: false,
+  soundEnabled: true,
+};
+
+const clampNumber = (value, min, max, fallback) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+};
+
+const normalizePomodoroMode = (mode) => (POMODORO_MODES.includes(mode) ? mode : 'focus');
+
+const normalizePomodoroConfig = (config) => ({
+  focusMinutes: clampNumber(config?.focusMinutes, 10, 90, DEFAULT_POMODORO_CONFIG.focusMinutes),
+  shortBreakMinutes: clampNumber(config?.shortBreakMinutes, 3, 30, DEFAULT_POMODORO_CONFIG.shortBreakMinutes),
+  longBreakMinutes: clampNumber(config?.longBreakMinutes, 10, 60, DEFAULT_POMODORO_CONFIG.longBreakMinutes),
+  cyclesBeforeLongBreak: clampNumber(config?.cyclesBeforeLongBreak, 2, 8, DEFAULT_POMODORO_CONFIG.cyclesBeforeLongBreak),
+  autoStartBreaks: Boolean(config?.autoStartBreaks),
+  autoStartFocus: Boolean(config?.autoStartFocus),
+  soundEnabled: config?.soundEnabled !== false,
+});
+
+const getPomodoroSecondsByMode = (config) => {
+  const safe = normalizePomodoroConfig(config);
+  return {
+    focus: safe.focusMinutes * 60,
+    short: safe.shortBreakMinutes * 60,
+    long: safe.longBreakMinutes * 60,
+  };
+};
+
+const normalizePomodoroSnapshot = (rawPomodoro, todayKey) => {
+  const config = normalizePomodoroConfig(rawPomodoro?.config || {});
+  const secondsByMode = getPomodoroSecondsByMode(config);
+  const mode = normalizePomodoroMode(rawPomodoro?.mode);
+  const maxSeconds = secondsByMode[mode];
+  const secondsLeft = clampNumber(rawPomodoro?.secondsLeft, 0, maxSeconds, maxSeconds);
+  const completed = clampNumber(rawPomodoro?.completed, 0, 9999, 0);
+  const statsDateKey = normalizeDateKey(rawPomodoro?.stats?.dateKey, parseDateKey(todayKey));
+  const focusMinutes = statsDateKey === todayKey
+    ? clampNumber(rawPomodoro?.stats?.focusMinutes, 0, 2000, 0)
+    : 0;
+
+  return {
+    config,
+    mode,
+    secondsLeft,
+    completed,
+    stats: {
+      dateKey: todayKey,
+      focusMinutes,
+    },
+  };
+};
+
+const formatCountdown = (seconds) => `${pad2(Math.floor(seconds / 60))}:${pad2(seconds % 60)}`;
+
 const WORKFLOW_NAV = [
   { id: 'plan', label: 'Plan', icon: CalIcon },
   { id: 'study', label: 'Study', icon: GraduationCap },
@@ -408,6 +479,13 @@ export default function StudyOS() {
   const [newGoal, setNewGoal] = useState({ title: '', subject: 'general', targetDateKey: addDays(todayKey, 14) });
   const [newSession, setNewSession] = useState({ subject: 'general', duration: 60, dateKey: todayKey, focus: 4, note: '' });
   const [newExam, setNewExam] = useState({ subject: 'general', dateKey: addDays(todayKey, 21), title: '' });
+  const initialPomodoro = normalizePomodoroSnapshot(null, todayKey);
+  const [pomodoroConfig, setPomodoroConfig] = useState(initialPomodoro.config);
+  const [pomodoroMode, setPomodoroMode] = useState(initialPomodoro.mode);
+  const [pomodoroSecondsLeft, setPomodoroSecondsLeft] = useState(initialPomodoro.secondsLeft);
+  const [pomodoroRunning, setPomodoroRunning] = useState(false);
+  const [pomodoroCompleted, setPomodoroCompleted] = useState(initialPomodoro.completed);
+  const [pomodoroFocusStats, setPomodoroFocusStats] = useState(initialPomodoro.stats);
 
   const [undoState, setUndoState] = useState(null);
 
@@ -419,6 +497,35 @@ export default function StudyOS() {
   const chatEndRef = useRef(null);
   const userDataLoadedRef = useRef(false);
   const dragTaskIdRef = useRef(null);
+
+  const pomodoroSecondsByMode = useMemo(() => getPomodoroSecondsByMode(pomodoroConfig), [pomodoroConfig]);
+
+  const playPomodoroBell = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    try {
+      const audioContext = new AudioContextClass();
+      const nowAt = audioContext.currentTime;
+      [0, 0.18, 0.36].forEach((offset) => {
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, nowAt + offset);
+        gain.gain.setValueAtTime(0.0001, nowAt + offset);
+        gain.gain.exponentialRampToValueAtTime(0.08, nowAt + offset + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, nowAt + offset + 0.12);
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+        oscillator.start(nowAt + offset);
+        oscillator.stop(nowAt + offset + 0.14);
+      });
+      setTimeout(() => audioContext.close().catch(() => {}), 700);
+    } catch {
+      // Ignore audio errors (autoplay policy or missing device).
+    }
+  }, []);
 
   const logout = () => {
     setAuthToken('');
@@ -443,6 +550,13 @@ export default function StudyOS() {
     setStudySessions(Array.isArray(data.studySessions) ? data.studySessions : []);
     setRevisions(Array.isArray(data.revisions) ? data.revisions : []);
     setExams(Array.isArray(data.exams) ? data.exams : []);
+    const pomodoroSnapshot = normalizePomodoroSnapshot(data.pomodoro, todayKey);
+    setPomodoroConfig(pomodoroSnapshot.config);
+    setPomodoroMode(pomodoroSnapshot.mode);
+    setPomodoroSecondsLeft(pomodoroSnapshot.secondsLeft);
+    setPomodoroRunning(false);
+    setPomodoroCompleted(pomodoroSnapshot.completed);
+    setPomodoroFocusStats(pomodoroSnapshot.stats);
     userDataLoadedRef.current = true;
   }, [todayKey]);
 
@@ -515,6 +629,13 @@ export default function StudyOS() {
       if (Array.isArray(saved.studySessions)) setStudySessions(saved.studySessions);
       if (Array.isArray(saved.revisions)) setRevisions(saved.revisions);
       if (Array.isArray(saved.exams)) setExams(saved.exams);
+      const pomodoroSnapshot = normalizePomodoroSnapshot(saved.pomodoro, todayKey);
+      setPomodoroConfig(pomodoroSnapshot.config);
+      setPomodoroMode(pomodoroSnapshot.mode);
+      setPomodoroSecondsLeft(pomodoroSnapshot.secondsLeft);
+      setPomodoroRunning(false);
+      setPomodoroCompleted(pomodoroSnapshot.completed);
+      setPomodoroFocusStats(pomodoroSnapshot.stats);
     } catch {
       return undefined;
     }
@@ -532,16 +653,39 @@ export default function StudyOS() {
       studySessions,
       revisions,
       exams,
+      pomodoro: {
+        config: pomodoroConfig,
+        mode: pomodoroMode,
+        secondsLeft: pomodoroSecondsLeft,
+        completed: pomodoroCompleted,
+        stats: pomodoroFocusStats,
+      },
     }));
-  }, [authToken, lang, notes, tasks, categories, goals, studySessions, revisions, exams]);
+  }, [authToken, lang, notes, tasks, categories, goals, studySessions, revisions, exams, pomodoroConfig, pomodoroMode, pomodoroSecondsLeft, pomodoroCompleted, pomodoroFocusStats]);
 
   useEffect(() => {
     if (!authToken || !authReady || !userDataLoadedRef.current) return;
     const timer = setTimeout(() => {
-      userDataApi.save(authToken, { notes, tasks, categories, lang, goals, studySessions, revisions, exams }).catch(() => {});
+      userDataApi.save(authToken, {
+        notes,
+        tasks,
+        categories,
+        lang,
+        goals,
+        studySessions,
+        revisions,
+        exams,
+        pomodoro: {
+          config: pomodoroConfig,
+          mode: pomodoroMode,
+          secondsLeft: pomodoroSecondsLeft,
+          completed: pomodoroCompleted,
+          stats: pomodoroFocusStats,
+        },
+      }).catch(() => {});
     }, 600);
     return () => clearTimeout(timer);
-  }, [authToken, authReady, notes, tasks, categories, lang, goals, studySessions, revisions, exams]);
+  }, [authToken, authReady, notes, tasks, categories, lang, goals, studySessions, revisions, exams, pomodoroConfig, pomodoroMode, pomodoroSecondsLeft, pomodoroCompleted, pomodoroFocusStats]);
 
   const calDays = useMemo(() => {
     const y = curMonth.getFullYear();
@@ -871,6 +1015,61 @@ export default function StudyOS() {
     return () => clearTimeout(timer);
   }, [undoState]);
 
+  useEffect(() => {
+    if (pomodoroFocusStats.dateKey === todayKey) return;
+    setPomodoroFocusStats({ dateKey: todayKey, focusMinutes: 0 });
+  }, [pomodoroFocusStats.dateKey, todayKey]);
+
+  const advancePomodoroPhase = useCallback((countCompletedFocus = true) => {
+    const wasFocus = pomodoroMode === 'focus';
+    let nextCompleted = pomodoroCompleted;
+
+    if (wasFocus && countCompletedFocus) {
+      nextCompleted += 1;
+      setPomodoroCompleted(nextCompleted);
+      setPomodoroFocusStats((prev) => ({
+        dateKey: todayKey,
+        focusMinutes: (prev.dateKey === todayKey ? prev.focusMinutes : 0) + pomodoroConfig.focusMinutes,
+      }));
+    }
+
+    const nextMode = wasFocus
+      ? (nextCompleted % pomodoroConfig.cyclesBeforeLongBreak === 0 ? 'long' : 'short')
+      : 'focus';
+
+    setPomodoroMode(nextMode);
+    setPomodoroSecondsLeft(pomodoroSecondsByMode[nextMode]);
+
+    const autoStart = nextMode === 'focus' ? pomodoroConfig.autoStartFocus : pomodoroConfig.autoStartBreaks;
+    setPomodoroRunning(autoStart);
+
+    if (countCompletedFocus && pomodoroConfig.soundEnabled) {
+      playPomodoroBell();
+    }
+  }, [pomodoroMode, pomodoroCompleted, pomodoroConfig, pomodoroSecondsByMode, playPomodoroBell, todayKey]);
+
+  useEffect(() => {
+    if (!pomodoroRunning) return undefined;
+    const timer = setInterval(() => {
+      setPomodoroSecondsLeft((prev) => Math.max(prev - 1, 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [pomodoroRunning]);
+
+  useEffect(() => {
+    if (!pomodoroRunning || pomodoroSecondsLeft > 0) return;
+    advancePomodoroPhase(true);
+  }, [pomodoroRunning, pomodoroSecondsLeft, advancePomodoroPhase]);
+
+  useEffect(() => {
+    if (pomodoroRunning) return;
+    const maxSeconds = pomodoroSecondsByMode[pomodoroMode];
+    setPomodoroSecondsLeft((prev) => {
+      if (!Number.isFinite(prev) || prev <= 0) return maxSeconds;
+      return Math.min(prev, maxSeconds);
+    });
+  }, [pomodoroRunning, pomodoroSecondsByMode, pomodoroMode]);
+
   const addGoal = (e) => {
     e?.preventDefault();
     if (!newGoal.title.trim()) return;
@@ -899,6 +1098,46 @@ export default function StudyOS() {
     };
     setStudySessions((prev) => [session, ...prev]);
     setNewSession({ subject: newSession.subject, duration: 60, dateKey: todayKey, focus: 4, note: '' });
+  };
+
+  const setPomodoroModeAndReset = (mode) => {
+    const safeMode = normalizePomodoroMode(mode);
+    setPomodoroMode(safeMode);
+    setPomodoroSecondsLeft(pomodoroSecondsByMode[safeMode]);
+    setPomodoroRunning(false);
+  };
+
+  const updatePomodoroConfig = (key, value) => {
+    setPomodoroConfig((prev) => {
+      const next = normalizePomodoroConfig({ ...prev, [key]: value });
+      const durationKeyChanged = ['focusMinutes', 'shortBreakMinutes', 'longBreakMinutes'].includes(key);
+      if (!pomodoroRunning && durationKeyChanged) {
+        const nextSecondsByMode = getPomodoroSecondsByMode(next);
+        setPomodoroSecondsLeft(nextSecondsByMode[pomodoroMode]);
+      }
+      return next;
+    });
+  };
+
+  const togglePomodoro = () => {
+    if (pomodoroRunning) {
+      setPomodoroRunning(false);
+      return;
+    }
+    if (pomodoroSecondsLeft <= 0) {
+      setPomodoroSecondsLeft(pomodoroSecondsByMode[pomodoroMode]);
+    }
+    setPomodoroRunning(true);
+  };
+
+  const resetPomodoro = () => {
+    setPomodoroSecondsLeft(pomodoroSecondsByMode[pomodoroMode]);
+    setPomodoroRunning(false);
+  };
+
+  const skipPomodoroPhase = () => {
+    setPomodoroRunning(false);
+    advancePomodoroPhase(false);
   };
 
   const addExam = (e) => {
@@ -1217,6 +1456,20 @@ Return plain JSON only:
   const currentHour = now.getHours();
   const timeGreeting = getTimeGreeting(currentHour, t);
   const currentTimeLabel = now.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const pomodoroModeLabel = {
+    focus: t.pomodoroFocus,
+    short: t.pomodoroShortBreak,
+    long: t.pomodoroLongBreak,
+  };
+  const pomodoroTotalSeconds = pomodoroSecondsByMode[pomodoroMode] || pomodoroSecondsByMode.focus;
+  const pomodoroProgress = pomodoroTotalSeconds
+    ? Math.min(100, Math.max(0, Math.round(((pomodoroTotalSeconds - pomodoroSecondsLeft) / pomodoroTotalSeconds) * 100)))
+    : 0;
+  const pomodoroTodayFocusMinutes = pomodoroFocusStats.dateKey === todayKey ? pomodoroFocusStats.focusMinutes : 0;
+  const completedInCurrentCycle = pomodoroCompleted % pomodoroConfig.cyclesBeforeLongBreak;
+  const pomodoroUntilLongBreak = completedInCurrentCycle === 0
+    ? pomodoroConfig.cyclesBeforeLongBreak
+    : pomodoroConfig.cyclesBeforeLongBreak - completedInCurrentCycle;
 
   const toggleTheme = () => setTheme((prev) => prev === 'dark' ? 'light' : 'dark');
 
@@ -1730,6 +1983,149 @@ Return plain JSON only:
             </div>
 
             <div className="space-y-5">
+              <div className="glass rounded-3xl p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="syne font-bold text-[#0A1628]">{t.pomodoroTitle}</h3>
+                  <div className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg bg-sky-100 text-sky-700 font-semibold">
+                    {pomodoroConfig.soundEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
+                    <span>{t.pomodoroSound}</span>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 mb-3">{t.pomodoroHint}</p>
+
+                <div className="grid grid-cols-3 gap-1.5 mb-4">
+                  {[
+                    { id: 'focus', label: t.pomodoroFocus },
+                    { id: 'short', label: t.pomodoroShortBreak },
+                    { id: 'long', label: t.pomodoroLongBreak },
+                  ].map((mode) => (
+                    <button
+                      key={mode.id}
+                      onClick={() => setPomodoroModeAndReset(mode.id)}
+                      className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold ${pomodoroMode === mode.id ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-700'}`}
+                    >
+                      {mode.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="text-center mb-4">
+                  <p className="text-xs uppercase tracking-wider text-slate-500">{t.pomodoroCurrentSession}: {pomodoroModeLabel[pomodoroMode]}</p>
+                  <p className="syne text-5xl leading-none mt-2 text-[#0A1628]">{formatCountdown(pomodoroSecondsLeft)}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">{t.pomodoroUntilLongBreak}: {pomodoroUntilLongBreak}</p>
+                  <div className="h-2 mt-3 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full rounded-full bg-sky-500 transition-all duration-300" style={{ width: `${pomodoroProgress}%` }} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <button onClick={togglePomodoro} className="px-3 py-2 rounded-xl text-xs font-bold text-white inline-flex items-center justify-center gap-1.5" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>
+                    {pomodoroRunning ? <Pause size={12} /> : <Play size={12} />}
+                    {pomodoroRunning ? t.pomodoroPause : t.pomodoroStart}
+                  </button>
+                  <button onClick={resetPomodoro} className="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 inline-flex items-center justify-center gap-1.5">
+                    <RotateCw size={12} />
+                    {t.pomodoroReset}
+                  </button>
+                  <button onClick={skipPomodoroPhase} className="px-3 py-2 rounded-xl text-xs font-semibold bg-indigo-100 text-indigo-700 inline-flex items-center justify-center gap-1.5">
+                    <SkipForward size={12} />
+                    {t.pomodoroSkip}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2">
+                    <p className="text-[11px] text-slate-500">{t.pomodoroCompleted}</p>
+                    <p className="text-base font-bold text-slate-700 leading-none mt-1">{pomodoroCompleted}</p>
+                  </div>
+                  <div className="rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2">
+                    <p className="text-[11px] text-slate-500">{t.pomodoroTodayFocus}</p>
+                    <p className="text-base font-bold text-slate-700 leading-none mt-1">{pomodoroTodayFocusMinutes} {t.pomodoroMinutesUnit}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-sky-100 p-3 bg-white/60">
+                  <p className="text-[11px] uppercase tracking-wider font-bold text-slate-500 mb-2 inline-flex items-center gap-1.5">
+                    <SlidersHorizontal size={12} />
+                    {t.pomodoroSettings}
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <label className="text-[11px] text-slate-500">
+                      {t.pomodoroFocusMinutes}
+                      <input
+                        type="number"
+                        min="10"
+                        max="90"
+                        value={pomodoroConfig.focusMinutes}
+                        onChange={(e) => updatePomodoroConfig('focusMinutes', e.target.value)}
+                        className="mt-1 w-full px-2 py-1.5 rounded-lg border border-sky-100 bg-sky-50/70 text-xs text-slate-700"
+                      />
+                    </label>
+                    <label className="text-[11px] text-slate-500">
+                      {t.pomodoroShortBreakMinutes}
+                      <input
+                        type="number"
+                        min="3"
+                        max="30"
+                        value={pomodoroConfig.shortBreakMinutes}
+                        onChange={(e) => updatePomodoroConfig('shortBreakMinutes', e.target.value)}
+                        className="mt-1 w-full px-2 py-1.5 rounded-lg border border-sky-100 bg-sky-50/70 text-xs text-slate-700"
+                      />
+                    </label>
+                    <label className="text-[11px] text-slate-500">
+                      {t.pomodoroLongBreakMinutes}
+                      <input
+                        type="number"
+                        min="10"
+                        max="60"
+                        value={pomodoroConfig.longBreakMinutes}
+                        onChange={(e) => updatePomodoroConfig('longBreakMinutes', e.target.value)}
+                        className="mt-1 w-full px-2 py-1.5 rounded-lg border border-sky-100 bg-sky-50/70 text-xs text-slate-700"
+                      />
+                    </label>
+                    <label className="text-[11px] text-slate-500">
+                      {t.pomodoroCyclesBeforeLongBreak}
+                      <input
+                        type="number"
+                        min="2"
+                        max="8"
+                        value={pomodoroConfig.cyclesBeforeLongBreak}
+                        onChange={(e) => updatePomodoroConfig('cyclesBeforeLongBreak', e.target.value)}
+                        className="mt-1 w-full px-2 py-1.5 rounded-lg border border-sky-100 bg-sky-50/70 text-xs text-slate-700"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs inline-flex items-center gap-1.5 text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={pomodoroConfig.autoStartBreaks}
+                        onChange={(e) => updatePomodoroConfig('autoStartBreaks', e.target.checked)}
+                      />
+                      {t.pomodoroAutoStartBreaks}
+                    </label>
+                    <label className="text-xs inline-flex items-center gap-1.5 text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={pomodoroConfig.autoStartFocus}
+                        onChange={(e) => updatePomodoroConfig('autoStartFocus', e.target.checked)}
+                      />
+                      {t.pomodoroAutoStartFocus}
+                    </label>
+                    <label className="text-xs inline-flex items-center gap-1.5 text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={pomodoroConfig.soundEnabled}
+                        onChange={(e) => updatePomodoroConfig('soundEnabled', e.target.checked)}
+                      />
+                      {t.pomodoroSound}
+                    </label>
+                  </div>
+                </div>
+              </div>
+
               <div className="glass rounded-3xl p-5 shadow-sm">
                 <h3 className="syne font-bold text-[#0A1628] mb-3">Goals</h3>
                 <form onSubmit={addGoal} className="space-y-2 mb-3">
