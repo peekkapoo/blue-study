@@ -86,6 +86,7 @@ export const authApi = {
   register: (payload) => apiRequest('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
   login: (payload) => apiRequest('/api/auth/login', { method: 'POST', body: JSON.stringify(payload) }),
   google: (credential) => apiRequest('/api/auth/google', { method: 'POST', body: JSON.stringify({ credential }) }),
+  updateProfile: (token, payload) => apiRequest('/api/auth/profile', { method: 'PATCH', body: JSON.stringify(payload) }, token),
   me: (token) => apiRequest('/api/auth/me', {}, token),
   health: () => apiRequest('/api/health'),
   publicConfig: () => apiRequest('/api/public-config'),

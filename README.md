@@ -118,6 +118,7 @@ If backend returns `503` on Render:
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `POST /api/auth/google`
+- `PATCH /api/auth/profile`
 - `GET /api/auth/me`
 - `GET /api/user-data`
 - `PUT /api/user-data`

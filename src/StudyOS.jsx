@@ -389,6 +389,10 @@ export default function StudyOS() {
     }
   });
   const [authReady, setAuthReady] = useState(false);
+  const [editingDisplayName, setEditingDisplayName] = useState(false);
+  const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [displayNameSaving, setDisplayNameSaving] = useState(false);
+  const [displayNameError, setDisplayNameError] = useState('');
   const [theme, setTheme] = useState(() => (localStorage.getItem('bs3-theme') === 'dark' ? 'dark' : 'light'));
   const [now, setNow] = useState(() => new Date());
   const [lang, setLang] = useState(DEFAULT_LANG);
@@ -532,9 +536,55 @@ export default function StudyOS() {
     setAuthToken('');
     setAuthUser(null);
     setAuthReady(true);
+    setEditingDisplayName(false);
+    setDisplayNameDraft('');
+    setDisplayNameSaving(false);
+    setDisplayNameError('');
     userDataLoadedRef.current = false;
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(AUTH_USER_KEY);
+  };
+
+  const startDisplayNameEdit = () => {
+    setDisplayNameDraft(authUser?.name || '');
+    setDisplayNameError('');
+    setEditingDisplayName(true);
+  };
+
+  const cancelDisplayNameEdit = () => {
+    setEditingDisplayName(false);
+    setDisplayNameDraft(authUser?.name || '');
+    setDisplayNameError('');
+  };
+
+  const saveDisplayName = async (e) => {
+    e.preventDefault();
+    if (!authToken || !authUser) return;
+
+    const nextName = displayNameDraft.trim();
+    if (nextName.length < 2 || nextName.length > 40) {
+      setDisplayNameError('Name must be between 2 and 40 characters.');
+      return;
+    }
+
+    if (nextName === authUser.name) {
+      setEditingDisplayName(false);
+      setDisplayNameError('');
+      return;
+    }
+
+    try {
+      setDisplayNameSaving(true);
+      setDisplayNameError('');
+      const res = await authApi.updateProfile(authToken, { name: nextName });
+      setAuthUser(res.user);
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(res.user));
+      setEditingDisplayName(false);
+    } catch (err) {
+      setDisplayNameError(err?.message || 'Unable to update name.');
+    } finally {
+      setDisplayNameSaving(false);
+    }
   };
 
   const hydrateUserData = useCallback(async (token) => {
@@ -596,6 +646,10 @@ export default function StudyOS() {
     };
     bootstrapAuth();
   }, [authToken, hydrateUserData]);
+
+  useEffect(() => {
+    setDisplayNameDraft(authUser?.name || '');
+  }, [authUser?.name]);
 
   useEffect(() => {
     setChatHistory((prev) => {
@@ -1557,9 +1611,52 @@ Return plain JSON only:
               <p className="text-[11px] leading-tight text-slate-500 font-semibold">{t.currentTime}</p>
               <p className="text-xs text-slate-700 font-bold">{currentTimeLabel}</p>
             </div>
-            <div className="px-3 py-2 glass rounded-xl">
-              <p className="text-[11px] leading-tight text-slate-500 font-semibold">{authUser.name}</p>
-              <p className="text-[10px] text-slate-400">{authUser.email}</p>
+            <div className="px-3 py-2 glass rounded-xl min-w-[220px]">
+              {!editingDisplayName ? (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] leading-tight text-slate-500 font-semibold truncate">{authUser.name}</p>
+                    <button
+                      onClick={startDisplayNameEdit}
+                      disabled={displayNameSaving}
+                      className="px-2 py-1 rounded-lg bg-sky-100 text-sky-700 text-[10px] font-semibold disabled:opacity-60"
+                    >
+                      Rename
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 truncate">{authUser.email}</p>
+                  {displayNameError && <p className="text-[10px] text-rose-500 mt-1">{displayNameError}</p>}
+                </>
+              ) : (
+                <form onSubmit={saveDisplayName} className="space-y-1">
+                  <input
+                    value={displayNameDraft}
+                    onChange={(e) => setDisplayNameDraft(e.target.value)}
+                    placeholder="Your name"
+                    className="w-full px-2 py-1.5 rounded-lg border border-sky-100 bg-sky-50/70 text-xs"
+                    maxLength={40}
+                    disabled={displayNameSaving}
+                  />
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="submit"
+                      disabled={displayNameSaving}
+                      className="px-2 py-1 rounded-lg bg-sky-600 text-white text-[10px] font-semibold disabled:opacity-60"
+                    >
+                      {displayNameSaving ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelDisplayNameEdit}
+                      disabled={displayNameSaving}
+                      className="px-2 py-1 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-semibold disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  {displayNameError && <p className="text-[10px] text-rose-500">{displayNameError}</p>}
+                </form>
+              )}
             </div>
             <button onClick={toggleTheme} aria-label={t.theme} className="px-3 py-2 glass rounded-xl text-xs font-semibold inline-flex items-center gap-1.5">
               {theme === 'dark' ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-indigo-500" />}

@@ -74,6 +74,9 @@ function normalizeUserData(body = {}) {
   };
 }
 
+const MIN_NAME_LENGTH = 2;
+const MAX_NAME_LENGTH = 40;
+
 async function authRequired(req, res, next) {
   const authHeader = req.headers.authorization || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
@@ -205,6 +208,20 @@ app.post('/api/auth/google', async (req, res) => {
     token: createToken(user),
     user: sanitizeUser(user),
   });
+});
+
+app.patch('/api/auth/profile', authRequired, async (req, res) => {
+  const nextName = String(req.body?.name || '').trim();
+  if (nextName.length < MIN_NAME_LENGTH || nextName.length > MAX_NAME_LENGTH) {
+    return res.status(400).json({ message: `Name must be between ${MIN_NAME_LENGTH} and ${MAX_NAME_LENGTH} characters` });
+  }
+
+  const updatedUser = await updateUser(req.user.id, { name: nextName });
+  if (!updatedUser) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
+  return res.json({ user: sanitizeUser(updatedUser) });
 });
 
 app.get('/api/auth/me', authRequired, async (req, res) => {
