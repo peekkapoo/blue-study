@@ -5,12 +5,13 @@ const boxStyle = {
   background: 'linear-gradient(140deg, #08142A 0%, #0E2B60 100%)',
 };
 
-export default function AuthScreen({ onAuthSuccess }) {
+export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onBypass = null }) {
   const [mode, setMode] = useState('login');
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [backendReady, setBackendReady] = useState(true);
+  const canBypass = Boolean(canBypassAuth && typeof onBypass === 'function');
 
   useEffect(() => {
     if (!IS_API_BASE_CONFIGURED) {
@@ -141,6 +142,21 @@ export default function AuthScreen({ onAuthSuccess }) {
             >
               {loading ? 'Processing...' : mode === 'login' ? 'Sign in' : 'Create account'}
             </button>
+
+            {canBypass && (
+              <>
+                <button
+                  type="button"
+                  onClick={onBypass}
+                  className="w-full py-2.5 rounded-xl border border-sky-200 text-sky-700 bg-sky-50 font-semibold"
+                >
+                  Continue in local mode (dev)
+                </button>
+                <p className="text-[11px] text-slate-500 text-center">
+                  Skips backend auth. Data is saved only in this browser.
+                </p>
+              </>
+            )}
           </form>
         </section>
       </div>

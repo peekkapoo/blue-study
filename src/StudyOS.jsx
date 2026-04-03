@@ -162,6 +162,11 @@ const STYLES = `
 
 const AUTH_TOKEN_KEY = 'bs3-auth-token';
 const AUTH_USER_KEY = 'bs3-auth-user';
+const DEV_AUTH_BYPASS_ENABLED = import.meta.env.DEV && ['1', 'true', 'yes', 'on'].includes(String(import.meta.env.VITE_AUTH_BYPASS || '').trim().toLowerCase());
+const DEV_BYPASS_USER = {
+  name: 'Local Developer',
+  email: 'local@blue-study.dev',
+};
 
 const normalizeCategory = (value) => CATEGORY_ALIASES[value] || value;
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -559,7 +564,11 @@ export default function StudyOS() {
 
   const saveDisplayName = async (e) => {
     e.preventDefault();
-    if (!authToken || !authUser) return;
+    if (!authUser) return;
+    if (!authToken) {
+      setDisplayNameError('Rename is available after signing in with backend.');
+      return;
+    }
 
     const nextName = displayNameDraft.trim();
     if (nextName.length < 2 || nextName.length > 40) {
@@ -624,9 +633,24 @@ export default function StudyOS() {
     setAuthReady(true);
   };
 
+  const activateDevBypass = useCallback(() => {
+    if (!DEV_AUTH_BYPASS_ENABLED) return;
+    userDataLoadedRef.current = true;
+    setAuthToken('');
+    setAuthUser({ ...DEV_BYPASS_USER });
+    setAuthReady(true);
+    setEditingDisplayName(false);
+    setDisplayNameSaving(false);
+    setDisplayNameError('');
+  }, []);
+
   useEffect(() => {
     const bootstrapAuth = async () => {
       if (!authToken) {
+        if (DEV_AUTH_BYPASS_ENABLED) {
+          setAuthUser((prev) => prev || { ...DEV_BYPASS_USER });
+          userDataLoadedRef.current = true;
+        }
         setAuthReady(true);
         return;
       }
@@ -1527,6 +1551,8 @@ Return plain JSON only:
     : pomodoroConfig.cyclesBeforeLongBreak - completedInCurrentCycle;
 
   const toggleTheme = () => setTheme((prev) => prev === 'dark' ? 'light' : 'dark');
+  const hasAuthSession = Boolean(authUser) && (Boolean(authToken) || DEV_AUTH_BYPASS_ENABLED);
+  const isLocalDevMode = hasAuthSession && !authToken;
 
   if (!authReady) {
     return (
@@ -1538,8 +1564,14 @@ Return plain JSON only:
     );
   }
 
-  if (!authToken || !authUser) {
-    return <AuthScreen onAuthSuccess={onAuthSuccess} />;
+  if (!hasAuthSession) {
+    return (
+      <AuthScreen
+        onAuthSuccess={onAuthSuccess}
+        canBypassAuth={DEV_AUTH_BYPASS_ENABLED}
+        onBypass={activateDevBypass}
+      />
+    );
   }
 
   const selectedNoteBacklinks = selectedNote ? getBacklinkTitles(selectedNote, notes) : [];
@@ -1618,13 +1650,16 @@ Return plain JSON only:
                     <p className="text-[11px] leading-tight text-slate-500 font-semibold truncate">{authUser.name}</p>
                     <button
                       onClick={startDisplayNameEdit}
-                      disabled={displayNameSaving}
+                      disabled={displayNameSaving || !authToken}
                       className="px-2 py-1 rounded-lg bg-sky-100 text-sky-700 text-[10px] font-semibold disabled:opacity-60"
                     >
-                      Rename
+                      {authToken ? 'Rename' : 'Local mode'}
                     </button>
                   </div>
                   <p className="text-[10px] text-slate-400 truncate">{authUser.email}</p>
+                  {isLocalDevMode && (
+                    <p className="text-[10px] text-amber-600 mt-1">Local dev mode: data stays in browser storage.</p>
+                  )}
                   {displayNameError && <p className="text-[10px] text-rose-500 mt-1">{displayNameError}</p>}
                 </>
               ) : (

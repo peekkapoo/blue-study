@@ -39,6 +39,7 @@ Frontend env (repo root `.env`, based on `.env.example`):
 VITE_GOOGLE_CLIENT_ID=your_google_web_client_id.apps.googleusercontent.com
 VITE_API_BASE=http://localhost:4000
 VITE_API_TIMEOUT_MS=12000
+VITE_AUTH_BYPASS=false
 ```
 
 Backend env (`backend/.env`, based on `backend/.env.example`):
@@ -57,6 +58,8 @@ Notes:
 - `FRONTEND_ORIGIN` supports multiple origins separated by commas.
 - `VITE_API_BASE` should point to your deployed backend URL in production.
 - If `VITE_API_BASE` is missing in dev, frontend falls back to `http://localhost:4000`.
+- Set `VITE_AUTH_BYPASS=true` to skip login in local dev and run frontend without backend.
+- `VITE_AUTH_BYPASS` is ignored in production builds (works only when `import.meta.env.DEV` is true).
 - `SUPABASE_URL` must be the Project URL (`https://...supabase.co`) from Supabase settings.
 - Do not use `sb_publishable_...` as `SUPABASE_URL`.
 - `SUPABASE_SERVICE_ROLE_KEY` must stay backend-only (never put in frontend env).
@@ -86,6 +89,12 @@ Alias (same as above):
 ```bash
 npm run dev:full
 ```
+
+Frontend only without login/backend (dev mode):
+
+1. Set `VITE_AUTH_BYPASS=true` in root `.env`.
+2. Run `npm run dev:client`.
+3. App opens directly in local mode and stores data in browser localStorage.
 
 ## 4) Deployment notes
 
