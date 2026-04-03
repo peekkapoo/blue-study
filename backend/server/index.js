@@ -211,12 +211,28 @@ app.post('/api/auth/google', async (req, res) => {
 });
 
 app.patch('/api/auth/profile', authRequired, async (req, res) => {
-  const nextName = String(req.body?.name || '').trim();
-  if (nextName.length < MIN_NAME_LENGTH || nextName.length > MAX_NAME_LENGTH) {
-    return res.status(400).json({ message: `Name must be between ${MIN_NAME_LENGTH} and ${MAX_NAME_LENGTH} characters` });
+  const updates = {};
+  const rawName = req.body?.name;
+  const rawPicture = req.body?.picture;
+
+  if (typeof rawName === 'string') {
+    const nextName = rawName.trim();
+    if (nextName.length < MIN_NAME_LENGTH || nextName.length > MAX_NAME_LENGTH) {
+      return res.status(400).json({ message: `Name must be between ${MIN_NAME_LENGTH} and ${MAX_NAME_LENGTH} characters` });
+    }
+    updates.name = nextName;
   }
 
-  const updatedUser = await updateUser(req.user.id, { name: nextName });
+  if (Object.hasOwn(req.body || {}, 'picture')) {
+    const nextPicture = rawPicture ? String(rawPicture).trim() : '';
+    updates.picture = nextPicture || null;
+  }
+
+  if (!Object.keys(updates).length) {
+    return res.status(400).json({ message: 'No profile changes provided' });
+  }
+
+  const updatedUser = await updateUser(req.user.id, updates);
   if (!updatedUser) {
     return res.status(404).json({ message: 'User not found' });
   }

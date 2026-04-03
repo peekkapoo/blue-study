@@ -156,7 +156,13 @@ const DEV_AUTH_BYPASS_ENABLED = import.meta.env.DEV && ['1', 'true', 'yes', 'on'
 const DEV_BYPASS_USER = {
   name: 'Local Developer',
   email: 'local@blue-study.dev',
+  picture: null,
 };
+
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+const MAX_AVATAR_INPUT_BYTES = 10 * 1024 * 1024;
+const AVATAR_MAX_DIMENSION = 512;
+const AVATAR_JPEG_QUALITY = 0.82;
 
 const normalizeCategory = (value) => CATEGORY_ALIASES[value] || value;
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -202,6 +208,71 @@ const isSameWeek = (dateKey, pivot) => {
 };
 
 const isoNow = () => new Date().toISOString();
+
+const buildAvatarUrl = (seed) => `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(seed)}&backgroundColor=bfdbfe`;
+
+const loadImage = (src) => new Promise((resolve, reject) => {
+  const img = new Image();
+  img.onload = () => resolve(img);
+  img.onerror = reject;
+  img.src = src;
+});
+
+const readBlobAsDataUrl = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+  reader.onerror = reject;
+  reader.readAsDataURL(blob);
+});
+
+const compressImageFile = async (file) => {
+  if (file.type === 'image/svg+xml') {
+    return readBlobAsDataUrl(file);
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(objectUrl);
+    const scale = Math.min(1, AVATAR_MAX_DIMENSION / Math.max(img.width, img.height));
+    const targetWidth = Math.max(1, Math.round(img.width * scale));
+    const targetHeight = Math.max(1, Math.round(img.height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('canvas');
+    ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+    const encode = (type, quality) => new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+    let outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+    let quality = outputType === 'image/jpeg' ? AVATAR_JPEG_QUALITY : undefined;
+    let blob = await encode(outputType, quality);
+
+    if (!blob) throw new Error('encode');
+
+    if (blob.size > MAX_AVATAR_BYTES && outputType === 'image/png') {
+      outputType = 'image/jpeg';
+      quality = AVATAR_JPEG_QUALITY;
+      blob = await encode(outputType, quality);
+    }
+
+    while (blob && outputType === 'image/jpeg' && blob.size > MAX_AVATAR_BYTES && quality > 0.6) {
+      quality = Math.max(0.6, Number((quality - 0.08).toFixed(2)));
+      blob = await encode(outputType, quality);
+    }
+
+    if (!blob || blob.size > MAX_AVATAR_BYTES) {
+      throw new Error('too-large');
+    }
+
+    const dataUrl = await readBlobAsDataUrl(blob);
+    if (!dataUrl) throw new Error('encode');
+    return dataUrl;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+};
 
 const getTimeGreeting = (hour, text) => {
   if (hour >= 5 && hour < 11) return text.greetingMorning || text.greeting;
@@ -393,6 +464,12 @@ export default function StudyOS() {
   const [displayNameDraft, setDisplayNameDraft] = useState('');
   const [displayNameSaving, setDisplayNameSaving] = useState(false);
   const [displayNameError, setDisplayNameError] = useState('');
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileDraft, setProfileDraft] = useState({ name: '', picture: '' });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
+  const [profileAvatarError, setProfileAvatarError] = useState('');
   const [theme, setTheme] = useState(() => (localStorage.getItem('bs3-theme') === 'dark' ? 'dark' : 'light'));
   const [now, setNow] = useState(() => new Date());
   const [lang, setLang] = useState(DEFAULT_LANG);
@@ -435,6 +512,13 @@ export default function StudyOS() {
   const getNoteTitle = useCallback((note) => note.seedKey ? seedNoteText(note.seedKey)?.title || note.title || '' : note.title || '', [seedNoteText]);
   const getNoteContent = useCallback((note) => note.seedKey ? seedNoteText(note.seedKey)?.content || note.content || '' : note.content || '', [seedNoteText]);
   const getTaskTitle = useCallback((task) => task.seedKey ? seedTaskText(task.seedKey) || task.task || '' : task.task || '', [seedTaskText]);
+  const avatarSeed = useMemo(() => {
+    const seed = authUser?.email || authUser?.name || 'study-blue';
+    return seed || 'study-blue';
+  }, [authUser?.email, authUser?.name]);
+  const avatarFallback = useMemo(() => buildAvatarUrl(avatarSeed), [avatarSeed]);
+  const avatarSrc = authUser?.picture || avatarFallback;
+  const profileAvatarSrc = profileDraft.picture || authUser?.picture || avatarFallback;
 
   const todayKey = toDateKey(now);
 
@@ -553,6 +637,11 @@ export default function StudyOS() {
     setDisplayNameDraft('');
     setDisplayNameSaving(false);
     setDisplayNameError('');
+    setProfileOpen(false);
+    setProfileDraft({ name: '', picture: '' });
+    setProfileSaving(false);
+    setProfileError('');
+    setProfileSuccess('');
     userDataLoadedRef.current = false;
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(AUTH_USER_KEY);
@@ -601,6 +690,105 @@ export default function StudyOS() {
       setDisplayNameError(err?.message || t.profileNameUpdateError);
     } finally {
       setDisplayNameSaving(false);
+    }
+  };
+
+  const openProfileEditor = () => {
+    if (!authUser) return;
+    setProfileDraft({
+      name: authUser.name || '',
+      picture: authUser.picture || '',
+    });
+    setProfileError('');
+    setProfileSuccess('');
+    setProfileAvatarError('');
+    setProfileOpen(true);
+  };
+
+  const closeProfileEditor = () => {
+    setProfileOpen(false);
+    setProfileError('');
+    setProfileSuccess('');
+    setProfileAvatarError('');
+  };
+
+  const generateProfileAvatar = () => {
+    const seedBase = profileDraft.name || authUser?.name || authUser?.email || 'study-blue';
+    const seed = `${seedBase}-${Date.now()}`;
+    setProfileDraft((prev) => ({ ...prev, picture: buildAvatarUrl(seed) }));
+  };
+
+  const clearProfileAvatar = () => {
+    setProfileDraft((prev) => ({ ...prev, picture: '' }));
+    setProfileAvatarError('');
+  };
+
+  const handleAvatarFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setProfileAvatarError('');
+
+    if (!file.type.startsWith('image/')) {
+      setProfileAvatarError(t.profileAvatarFileTypeError);
+      return;
+    }
+
+    if (file.size > MAX_AVATAR_INPUT_BYTES) {
+      setProfileAvatarError(t.profileAvatarFileTooLarge);
+      return;
+    }
+
+    try {
+      const dataUrl = await compressImageFile(file);
+      if (!dataUrl) {
+        setProfileAvatarError(t.profileAvatarUploadError);
+        return;
+      }
+      setProfileDraft((prev) => ({ ...prev, picture: dataUrl }));
+    } catch (err) {
+      if (err?.message === 'too-large') {
+        setProfileAvatarError(t.profileAvatarFileTooLarge);
+        return;
+      }
+      setProfileAvatarError(t.profileAvatarUploadError);
+    }
+  };
+
+  const saveProfile = async (e) => {
+    e.preventDefault();
+    if (!authUser) return;
+
+    const nextName = profileDraft.name.trim();
+    if (nextName.length < 2 || nextName.length > 40) {
+      setProfileError(t.profileNameLengthError);
+      return;
+    }
+
+    const nextPicture = profileDraft.picture.trim();
+    const payload = { name: nextName, picture: nextPicture || null };
+
+    if (!authToken) {
+      const updatedUser = { ...authUser, name: nextName, picture: nextPicture || null };
+      setAuthUser(updatedUser);
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(updatedUser));
+      setProfileSuccess(t.profileSavedLocal);
+      setProfileError('');
+      return;
+    }
+
+    try {
+      setProfileSaving(true);
+      setProfileError('');
+      const res = await authApi.updateProfile(authToken, payload);
+      setAuthUser(res.user);
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(res.user));
+      setProfileSuccess(t.profileSaved);
+    } catch (err) {
+      setProfileError(err?.message || t.profileUpdateError);
+    } finally {
+      setProfileSaving(false);
     }
   };
 
@@ -1637,9 +1825,22 @@ Return plain JSON only:
           })}
         </div>
 
-        <div className="hidden md:block">
-          <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=StudyBlue&backgroundColor=bfdbfe" className="w-9 h-9 rounded-full border-2 border-sky-500/30" alt={t.avatarAlt} />
-        </div>
+        <button
+          type="button"
+          onClick={openProfileEditor}
+          className="hidden md:block group relative"
+          aria-label={t.profileEdit}
+          title={t.profileEdit}
+        >
+          <img
+            src={avatarSrc}
+            className="w-9 h-9 rounded-full border-2 border-sky-500/30 object-cover transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:shadow-lg group-hover:ring-2 group-hover:ring-sky-300"
+            alt={t.avatarAlt}
+          />
+          <span className="absolute left-[calc(100%+10px)] top-1/2 -translate-y-1/2 px-2.5 py-1 bg-[#0A1628] text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap shadow-xl border border-white/10 pointer-events-none">
+            {t.profileEdit}
+          </span>
+        </button>
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 md:px-10 pt-6 pb-8 relative z-10">
@@ -1662,17 +1863,22 @@ Return plain JSON only:
             <div className="px-3 py-2 glass rounded-xl min-w-[220px]">
               {!editingDisplayName ? (
                 <>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] leading-tight text-slate-500 font-semibold truncate">{authUser.name}</p>
-                    <button
-                      onClick={startDisplayNameEdit}
-                      disabled={displayNameSaving || !authToken}
-                      className="px-2 py-1 rounded-lg bg-sky-100 text-sky-700 text-[10px] font-semibold disabled:opacity-60"
-                    >
-                      {authToken ? t.profileRename : t.profileLocalMode}
-                    </button>
+                  <div className="flex items-center gap-2">
+                    <img src={avatarSrc} alt={t.avatarAlt} className="w-8 h-8 rounded-full border border-sky-200 object-cover" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] leading-tight text-slate-500 font-semibold truncate">{authUser.name}</p>
+                        <button
+                          onClick={startDisplayNameEdit}
+                          disabled={displayNameSaving || !authToken}
+                          className="px-2 py-1 rounded-lg bg-sky-100 text-sky-700 text-[10px] font-semibold disabled:opacity-60"
+                        >
+                          {authToken ? t.profileRename : t.profileLocalMode}
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-400 truncate">{authUser.email}</p>
+                    </div>
                   </div>
-                  <p className="text-[10px] text-slate-400 truncate">{authUser.email}</p>
                   {isLocalDevMode && (
                     <p className="text-[10px] text-amber-600 mt-1">{t.profileLocalDevNotice}</p>
                   )}
@@ -1722,6 +1928,133 @@ Return plain JSON only:
             </button>
           </div>
         </header>
+
+        {profileOpen && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center px-4">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={closeProfileEditor} />
+            <div
+              className="relative w-full max-w-3xl rounded-3xl bg-white p-6 shadow-2xl border border-sky-100"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-bold text-sky-500 uppercase tracking-[2.5px]">{t.profileTitle}</p>
+                  <h2 className="syne text-2xl text-[#0A1628]">{t.profileEdit}</h2>
+                  <p className="text-sm text-slate-500 mt-1">{t.profileSubtitle}</p>
+                </div>
+                <button type="button" onClick={closeProfileEditor} className="p-2 rounded-lg hover:bg-slate-100">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={saveProfile} className="mt-5 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-5">
+                <div className="flex flex-col items-center md:items-start gap-3">
+                  <div className="w-28 h-28 rounded-full overflow-hidden border border-sky-100 bg-slate-100">
+                    <img src={profileAvatarSrc} alt={t.avatarAlt} className="w-full h-full object-cover" />
+                  </div>
+                  <div className="w-full space-y-2">
+                    <label className="text-xs font-semibold text-slate-500">{t.profileAvatarLabel}</label>
+                    <input
+                      value={profileDraft.picture}
+                      onChange={(e) => setProfileDraft((prev) => ({ ...prev, picture: e.target.value }))}
+                      placeholder={t.profileAvatarPlaceholder}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs"
+                    />
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500">{t.profileAvatarUpload}</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAvatarFileChange}
+                        className="mt-1 w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-sky-700 hover:file:bg-sky-200"
+                      />
+                      <p className="text-[11px] text-slate-500 mt-1">{t.profileAvatarUploadHint}</p>
+                      {profileAvatarError && <p className="text-[11px] text-rose-500 mt-1">{profileAvatarError}</p>}
+                    </div>
+                    <p className="text-[11px] text-slate-500">{t.profileAvatarHint}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={generateProfileAvatar}
+                        className="px-2.5 py-1.5 text-[11px] rounded-lg bg-sky-100 text-sky-700 font-semibold"
+                      >
+                        {t.profileAvatarGenerate}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearProfileAvatar}
+                        className="px-2.5 py-1.5 text-[11px] rounded-lg bg-slate-100 text-slate-600 font-semibold"
+                      >
+                        {t.profileAvatarRemove}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500">{t.profileNameLabel}</label>
+                    <input
+                      value={profileDraft.name}
+                      onChange={(e) => setProfileDraft((prev) => ({ ...prev, name: e.target.value }))}
+                      placeholder={t.profileNamePlaceholder}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs"
+                      maxLength={40}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500">{t.profileEmailLabel}</label>
+                      <input
+                        value={authUser?.email || '-'}
+                        readOnly
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500">{t.profileProviderLabel}</label>
+                      <input
+                        value={authUser?.provider || 'local'}
+                        readOnly
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500">{t.profileCreatedLabel}</label>
+                    <input
+                      value={formatDateTime(authUser?.createdAt)}
+                      readOnly
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50"
+                    />
+                  </div>
+                  {isLocalDevMode && (
+                    <p className="text-[11px] text-amber-600">{t.profileLocalDevNotice}</p>
+                  )}
+                  {profileError && <p className="text-sm text-rose-500">{profileError}</p>}
+                  {profileSuccess && <p className="text-sm text-emerald-600">{profileSuccess}</p>}
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={closeProfileEditor}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600"
+                    >
+                      {t.cancel}
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={profileSaving}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-60"
+                      style={{ background: 'linear-gradient(135deg, #0EA5E9 0%, #1D4ED8 100%)' }}
+                    >
+                      {profileSaving ? t.saving : t.save}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {view === 'today' && (
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 anim-tab">
