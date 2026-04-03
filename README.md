@@ -96,6 +96,11 @@ Backend deploy (for example Render):
 - Start command: `npm start`
 - Health check path: `/api/health`
 
+If your Render service runs from repo root instead of `backend`:
+
+- Build command: `npm install` (root `postinstall` now installs backend deps automatically)
+- Start command: `npm start`
+
 If backend returns `503` on Render:
 
 - Check logs for startup crash.

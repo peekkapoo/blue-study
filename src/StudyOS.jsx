@@ -304,6 +304,7 @@ const formatCountdown = (seconds) => `${pad2(Math.floor(seconds / 60))}:${pad2(s
 const WORKFLOW_NAV = [
   { id: 'plan', label: 'Plan', icon: CalIcon },
   { id: 'study', label: 'Study', icon: GraduationCap },
+  { id: 'pomodoro', label: 'Pomodoro', icon: Timer },
   { id: 'capture', label: 'Capture', icon: BookOpen },
   { id: 'review', label: 'Review', icon: Brain },
   { id: 'reflect', label: 'Reflect', icon: LayoutDashboard },
@@ -1548,7 +1549,7 @@ Return plain JSON only:
             <h1 className="syne text-2xl md:text-[2rem] font-bold text-[#0A1628] leading-tight">
               {view === 'reflect' ? timeGreeting : WORKFLOW_NAV.find((item) => item.id === view)?.label}
             </h1>
-            <p className="text-xs text-slate-500 mt-1">Plan | Study | Capture | Review | Reflect</p>
+            <p className="text-xs text-slate-500 mt-1">Plan | Study | Pomodoro | Capture | Review | Reflect</p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap lg:justify-end">
@@ -1946,7 +1947,7 @@ Return plain JSON only:
             <div className="xl:col-span-2 glass rounded-3xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="syne text-xl font-bold text-[#0A1628]">Study Sessions</h2>
-                <Timer size={18} className="text-sky-500" />
+                <BookMarked size={18} className="text-sky-500" />
               </div>
 
               <form onSubmit={addStudySession} className="grid grid-cols-1 md:grid-cols-5 gap-2 mb-4">
@@ -1983,149 +1984,6 @@ Return plain JSON only:
             </div>
 
             <div className="space-y-5">
-              <div className="glass rounded-3xl p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="syne font-bold text-[#0A1628]">{t.pomodoroTitle}</h3>
-                  <div className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg bg-sky-100 text-sky-700 font-semibold">
-                    {pomodoroConfig.soundEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
-                    <span>{t.pomodoroSound}</span>
-                  </div>
-                </div>
-                <p className="text-xs text-slate-500 mb-3">{t.pomodoroHint}</p>
-
-                <div className="grid grid-cols-3 gap-1.5 mb-4">
-                  {[
-                    { id: 'focus', label: t.pomodoroFocus },
-                    { id: 'short', label: t.pomodoroShortBreak },
-                    { id: 'long', label: t.pomodoroLongBreak },
-                  ].map((mode) => (
-                    <button
-                      key={mode.id}
-                      onClick={() => setPomodoroModeAndReset(mode.id)}
-                      className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold ${pomodoroMode === mode.id ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-700'}`}
-                    >
-                      {mode.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="text-center mb-4">
-                  <p className="text-xs uppercase tracking-wider text-slate-500">{t.pomodoroCurrentSession}: {pomodoroModeLabel[pomodoroMode]}</p>
-                  <p className="syne text-5xl leading-none mt-2 text-[#0A1628]">{formatCountdown(pomodoroSecondsLeft)}</p>
-                  <p className="text-[11px] text-slate-500 mt-1">{t.pomodoroUntilLongBreak}: {pomodoroUntilLongBreak}</p>
-                  <div className="h-2 mt-3 rounded-full bg-slate-100 overflow-hidden">
-                    <div className="h-full rounded-full bg-sky-500 transition-all duration-300" style={{ width: `${pomodoroProgress}%` }} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 mb-3">
-                  <button onClick={togglePomodoro} className="px-3 py-2 rounded-xl text-xs font-bold text-white inline-flex items-center justify-center gap-1.5" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>
-                    {pomodoroRunning ? <Pause size={12} /> : <Play size={12} />}
-                    {pomodoroRunning ? t.pomodoroPause : t.pomodoroStart}
-                  </button>
-                  <button onClick={resetPomodoro} className="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 inline-flex items-center justify-center gap-1.5">
-                    <RotateCw size={12} />
-                    {t.pomodoroReset}
-                  </button>
-                  <button onClick={skipPomodoroPhase} className="px-3 py-2 rounded-xl text-xs font-semibold bg-indigo-100 text-indigo-700 inline-flex items-center justify-center gap-1.5">
-                    <SkipForward size={12} />
-                    {t.pomodoroSkip}
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <div className="rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2">
-                    <p className="text-[11px] text-slate-500">{t.pomodoroCompleted}</p>
-                    <p className="text-base font-bold text-slate-700 leading-none mt-1">{pomodoroCompleted}</p>
-                  </div>
-                  <div className="rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2">
-                    <p className="text-[11px] text-slate-500">{t.pomodoroTodayFocus}</p>
-                    <p className="text-base font-bold text-slate-700 leading-none mt-1">{pomodoroTodayFocusMinutes} {t.pomodoroMinutesUnit}</p>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-sky-100 p-3 bg-white/60">
-                  <p className="text-[11px] uppercase tracking-wider font-bold text-slate-500 mb-2 inline-flex items-center gap-1.5">
-                    <SlidersHorizontal size={12} />
-                    {t.pomodoroSettings}
-                  </p>
-
-                  <div className="grid grid-cols-2 gap-2 mb-2">
-                    <label className="text-[11px] text-slate-500">
-                      {t.pomodoroFocusMinutes}
-                      <input
-                        type="number"
-                        min="10"
-                        max="90"
-                        value={pomodoroConfig.focusMinutes}
-                        onChange={(e) => updatePomodoroConfig('focusMinutes', e.target.value)}
-                        className="mt-1 w-full px-2 py-1.5 rounded-lg border border-sky-100 bg-sky-50/70 text-xs text-slate-700"
-                      />
-                    </label>
-                    <label className="text-[11px] text-slate-500">
-                      {t.pomodoroShortBreakMinutes}
-                      <input
-                        type="number"
-                        min="3"
-                        max="30"
-                        value={pomodoroConfig.shortBreakMinutes}
-                        onChange={(e) => updatePomodoroConfig('shortBreakMinutes', e.target.value)}
-                        className="mt-1 w-full px-2 py-1.5 rounded-lg border border-sky-100 bg-sky-50/70 text-xs text-slate-700"
-                      />
-                    </label>
-                    <label className="text-[11px] text-slate-500">
-                      {t.pomodoroLongBreakMinutes}
-                      <input
-                        type="number"
-                        min="10"
-                        max="60"
-                        value={pomodoroConfig.longBreakMinutes}
-                        onChange={(e) => updatePomodoroConfig('longBreakMinutes', e.target.value)}
-                        className="mt-1 w-full px-2 py-1.5 rounded-lg border border-sky-100 bg-sky-50/70 text-xs text-slate-700"
-                      />
-                    </label>
-                    <label className="text-[11px] text-slate-500">
-                      {t.pomodoroCyclesBeforeLongBreak}
-                      <input
-                        type="number"
-                        min="2"
-                        max="8"
-                        value={pomodoroConfig.cyclesBeforeLongBreak}
-                        onChange={(e) => updatePomodoroConfig('cyclesBeforeLongBreak', e.target.value)}
-                        className="mt-1 w-full px-2 py-1.5 rounded-lg border border-sky-100 bg-sky-50/70 text-xs text-slate-700"
-                      />
-                    </label>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs inline-flex items-center gap-1.5 text-slate-600">
-                      <input
-                        type="checkbox"
-                        checked={pomodoroConfig.autoStartBreaks}
-                        onChange={(e) => updatePomodoroConfig('autoStartBreaks', e.target.checked)}
-                      />
-                      {t.pomodoroAutoStartBreaks}
-                    </label>
-                    <label className="text-xs inline-flex items-center gap-1.5 text-slate-600">
-                      <input
-                        type="checkbox"
-                        checked={pomodoroConfig.autoStartFocus}
-                        onChange={(e) => updatePomodoroConfig('autoStartFocus', e.target.checked)}
-                      />
-                      {t.pomodoroAutoStartFocus}
-                    </label>
-                    <label className="text-xs inline-flex items-center gap-1.5 text-slate-600">
-                      <input
-                        type="checkbox"
-                        checked={pomodoroConfig.soundEnabled}
-                        onChange={(e) => updatePomodoroConfig('soundEnabled', e.target.checked)}
-                      />
-                      {t.pomodoroSound}
-                    </label>
-                  </div>
-                </div>
-              </div>
-
               <div className="glass rounded-3xl p-5 shadow-sm">
                 <h3 className="syne font-bold text-[#0A1628] mb-3">Goals</h3>
                 <form onSubmit={addGoal} className="space-y-2 mb-3">
@@ -2166,6 +2024,177 @@ Return plain JSON only:
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === 'pomodoro' && (
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 anim-tab">
+            <div className="xl:col-span-2 glass rounded-3xl p-6 md:p-8 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+                <div>
+                  <h2 className="syne text-2xl font-bold text-[#0A1628]">{t.pomodoroTitle}</h2>
+                  <p className="text-sm text-slate-500 mt-1">{t.pomodoroHint}</p>
+                </div>
+                <div className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">
+                  {pomodoroConfig.soundEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
+                  <span>{t.pomodoroSound}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 mb-5">
+                {[
+                  { id: 'focus', label: t.pomodoroFocus },
+                  { id: 'short', label: t.pomodoroShortBreak },
+                  { id: 'long', label: t.pomodoroLongBreak },
+                ].map((mode) => (
+                  <button
+                    key={mode.id}
+                    onClick={() => setPomodoroModeAndReset(mode.id)}
+                    className={`px-3 py-2 rounded-xl text-xs font-semibold ${pomodoroMode === mode.id ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-700'}`}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="rounded-3xl border border-sky-100 bg-white/70 p-6 md:p-8">
+                <div className="text-center">
+                  <p className="text-xs uppercase tracking-wider text-slate-500">{t.pomodoroCurrentSession}: {pomodoroModeLabel[pomodoroMode]}</p>
+                  <p className="syne text-6xl leading-none mt-3 text-[#0A1628]">{formatCountdown(pomodoroSecondsLeft)}</p>
+                  <p className="text-xs text-slate-500 mt-2">{t.pomodoroUntilLongBreak}: {pomodoroUntilLongBreak}</p>
+                  <div className="h-2.5 mt-4 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full rounded-full bg-sky-500 transition-all duration-300" style={{ width: `${pomodoroProgress}%` }} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-5">
+                  <button onClick={togglePomodoro} className="px-3 py-2.5 rounded-xl text-xs font-bold text-white inline-flex items-center justify-center gap-1.5" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>
+                    {pomodoroRunning ? <Pause size={12} /> : <Play size={12} />}
+                    {pomodoroRunning ? t.pomodoroPause : t.pomodoroStart}
+                  </button>
+                  <button onClick={resetPomodoro} className="px-3 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 inline-flex items-center justify-center gap-1.5">
+                    <RotateCw size={12} />
+                    {t.pomodoroReset}
+                  </button>
+                  <button onClick={skipPomodoroPhase} className="px-3 py-2.5 rounded-xl text-xs font-semibold bg-indigo-100 text-indigo-700 inline-flex items-center justify-center gap-1.5">
+                    <SkipForward size={12} />
+                    {t.pomodoroSkip}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                <div className="rounded-2xl border border-sky-100 bg-sky-50/60 px-4 py-3">
+                  <p className="text-xs text-slate-500">{t.pomodoroCompleted}</p>
+                  <p className="syne text-2xl leading-none text-slate-700 mt-1">{pomodoroCompleted}</p>
+                </div>
+                <div className="rounded-2xl border border-sky-100 bg-sky-50/60 px-4 py-3">
+                  <p className="text-xs text-slate-500">{t.pomodoroTodayFocus}</p>
+                  <p className="syne text-2xl leading-none text-slate-700 mt-1">{pomodoroTodayFocusMinutes} {t.pomodoroMinutesUnit}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-5">
+              <div className="glass rounded-3xl p-5 shadow-sm">
+                <p className="text-[11px] uppercase tracking-wider font-bold text-slate-500 mb-3 inline-flex items-center gap-1.5">
+                  <SlidersHorizontal size={12} />
+                  {t.pomodoroSettings}
+                </p>
+
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <label className="text-[11px] text-slate-500">
+                    {t.pomodoroFocusMinutes}
+                    <input
+                      type="number"
+                      min="10"
+                      max="90"
+                      value={pomodoroConfig.focusMinutes}
+                      onChange={(e) => updatePomodoroConfig('focusMinutes', e.target.value)}
+                      className="mt-1 w-full px-2 py-1.5 rounded-lg border border-sky-100 bg-sky-50/70 text-xs text-slate-700"
+                    />
+                  </label>
+                  <label className="text-[11px] text-slate-500">
+                    {t.pomodoroShortBreakMinutes}
+                    <input
+                      type="number"
+                      min="3"
+                      max="30"
+                      value={pomodoroConfig.shortBreakMinutes}
+                      onChange={(e) => updatePomodoroConfig('shortBreakMinutes', e.target.value)}
+                      className="mt-1 w-full px-2 py-1.5 rounded-lg border border-sky-100 bg-sky-50/70 text-xs text-slate-700"
+                    />
+                  </label>
+                  <label className="text-[11px] text-slate-500">
+                    {t.pomodoroLongBreakMinutes}
+                    <input
+                      type="number"
+                      min="10"
+                      max="60"
+                      value={pomodoroConfig.longBreakMinutes}
+                      onChange={(e) => updatePomodoroConfig('longBreakMinutes', e.target.value)}
+                      className="mt-1 w-full px-2 py-1.5 rounded-lg border border-sky-100 bg-sky-50/70 text-xs text-slate-700"
+                    />
+                  </label>
+                  <label className="text-[11px] text-slate-500">
+                    {t.pomodoroCyclesBeforeLongBreak}
+                    <input
+                      type="number"
+                      min="2"
+                      max="8"
+                      value={pomodoroConfig.cyclesBeforeLongBreak}
+                      onChange={(e) => updatePomodoroConfig('cyclesBeforeLongBreak', e.target.value)}
+                      className="mt-1 w-full px-2 py-1.5 rounded-lg border border-sky-100 bg-sky-50/70 text-xs text-slate-700"
+                    />
+                  </label>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs inline-flex items-center gap-1.5 text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={pomodoroConfig.autoStartBreaks}
+                      onChange={(e) => updatePomodoroConfig('autoStartBreaks', e.target.checked)}
+                    />
+                    {t.pomodoroAutoStartBreaks}
+                  </label>
+                  <label className="text-xs inline-flex items-center gap-1.5 text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={pomodoroConfig.autoStartFocus}
+                      onChange={(e) => updatePomodoroConfig('autoStartFocus', e.target.checked)}
+                    />
+                    {t.pomodoroAutoStartFocus}
+                  </label>
+                  <label className="text-xs inline-flex items-center gap-1.5 text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={pomodoroConfig.soundEnabled}
+                      onChange={(e) => updatePomodoroConfig('soundEnabled', e.target.checked)}
+                    />
+                    {t.pomodoroSound}
+                  </label>
+                </div>
+              </div>
+
+              <div className="glass rounded-3xl p-5 shadow-sm">
+                <h3 className="syne font-bold text-[#0A1628] mb-2">{t.reflectWhatFirst}</h3>
+                <p className="text-xs text-slate-500 mb-3">{t.pomodoroHint}</p>
+                {nextTaskRecommendation ? (
+                  <div className="rounded-xl border border-sky-100 bg-sky-50/60 p-3">
+                    <p className="text-xs text-slate-500">{t.reflectWhatFirst}</p>
+                    <p className="text-sm font-semibold mt-1">{getTaskTitle(nextTaskRecommendation)}</p>
+                    <p className="text-[11px] text-slate-500 mt-1">Due {formatDateFromKey(nextTaskRecommendation.dueDateKey)}</p>
+                    <button onClick={() => setView('plan')} className="mt-2 px-3 py-1.5 rounded-lg bg-sky-100 text-sky-700 text-xs font-semibold">{t.reflectOpenPlanner}</button>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <p className="text-sm text-slate-500">{t.reflectNoOpenTasks}</p>
+                    <button onClick={() => setView('plan')} className="mt-2 px-3 py-1.5 rounded-lg bg-slate-200 text-slate-700 text-xs font-semibold">{t.reflectOpenPlanner}</button>
+                  </div>
+                )}
               </div>
             </div>
           </div>

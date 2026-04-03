@@ -7,6 +7,7 @@
     "node": ">=18"
   },
   "scripts": {
+    "postinstall": "npm --prefix backend install",
     "start": "npm --prefix backend run start",
     "start:frontend": "vite preview",
     "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
