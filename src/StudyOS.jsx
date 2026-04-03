@@ -7,17 +7,13 @@ import {
   Trash2,
   ChevronRight,
   ChevronLeft,
-  Clock,
-  Search,
   X,
   Check,
   Sparkles,
   Bot,
   Send,
   User,
-  Target,
   Zap,
-  CheckCircle2,
   TrendingUp,
   Languages,
   Sun,
@@ -26,25 +22,19 @@ import {
   PinOff,
   Archive,
   Copy,
-  CalendarClock,
   GripVertical,
   AlertTriangle,
-  Filter,
   ListChecks,
-  Timer,
   Play,
   Pause,
   SkipForward,
   SlidersHorizontal,
   Volume2,
   VolumeX,
-  Flag,
   RotateCw,
   Undo2,
   GraduationCap,
   BookMarked,
-  Brain,
-  BarChart3,
   ClipboardList,
 } from 'lucide-react';
 import {
@@ -229,9 +219,16 @@ const CAT_COLORS = {
 const catColor = (cat) => CAT_COLORS[cat] ?? { pill: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400', icon: 'bg-slate-50 text-slate-500' };
 
 const PRIORITY_META = {
-  low: { label: 'Low', cls: 'bg-slate-100 text-slate-600' },
-  medium: { label: 'Medium', cls: 'bg-amber-100 text-amber-700' },
-  high: { label: 'High', cls: 'bg-rose-100 text-rose-700' },
+  low: { labelKey: 'priorityLow', cls: 'bg-slate-100 text-slate-600' },
+  medium: { labelKey: 'priorityMedium', cls: 'bg-amber-100 text-amber-700' },
+  high: { labelKey: 'priorityHigh', cls: 'bg-rose-100 text-rose-700' },
+};
+
+const RECURRENCE_LABEL_KEYS = {
+  none: 'recurrenceNone',
+  daily: 'recurrenceDaily',
+  weekly: 'recurrenceWeekly',
+  monthly: 'recurrenceMonthly',
 };
 
 const RECURRENCE_STEP = {
@@ -306,13 +303,11 @@ const normalizePomodoroSnapshot = (rawPomodoro, todayKey) => {
 
 const formatCountdown = (seconds) => `${pad2(Math.floor(seconds / 60))}:${pad2(seconds % 60)}`;
 
-const WORKFLOW_NAV = [
-  { id: 'plan', label: 'Plan', icon: CalIcon },
-  { id: 'study', label: 'Study', icon: GraduationCap },
-  { id: 'pomodoro', label: 'Pomodoro', icon: Timer },
-  { id: 'capture', label: 'Capture', icon: BookOpen },
-  { id: 'review', label: 'Review', icon: Brain },
-  { id: 'reflect', label: 'Reflect', icon: LayoutDashboard },
+const getWorkflowNav = (text) => [
+  { id: 'today', label: text.navToday, icon: LayoutDashboard },
+  { id: 'plan', label: text.navPlan, icon: CalIcon },
+  { id: 'learn', label: text.navLearn, icon: GraduationCap },
+  { id: 'library', label: text.navLibrary, icon: BookOpen },
 ];
 
 const Stat = ({ label, value, sub }) => (
@@ -323,13 +318,13 @@ const Stat = ({ label, value, sub }) => (
   </div>
 );
 
-const getBacklinkTitles = (note, notes) => {
+const getBacklinkTitles = (note, notes, fallbackTitle) => {
   const title = (note.title || '').trim();
   if (!title) return [];
   return notes
     .filter((n) => n.id !== note.id)
     .filter((n) => (n.content || '').includes(`[[${title}]]`))
-    .map((n) => n.title || 'Untitled');
+    .map((n) => n.title || fallbackTitle || 'Untitled');
 };
 
 const summarizeNote = (content) => {
@@ -401,18 +396,30 @@ export default function StudyOS() {
   const [theme, setTheme] = useState(() => (localStorage.getItem('bs3-theme') === 'dark' ? 'dark' : 'light'));
   const [now, setNow] = useState(() => new Date());
   const [lang, setLang] = useState(DEFAULT_LANG);
-  const [view, setView] = useState('reflect');
+  const [view, setView] = useState('today');
 
   const [curMonth, setCurMonth] = useState(new Date());
   const [selDate, setSelDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState('month');
   const [plannerMode, setPlannerMode] = useState('today');
-  const [searchQ, setSearchQ] = useState('');
 
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [newCatInput, setNewCatInput] = useState('');
 
   const t = getUIText(lang);
+  const workflowNav = useMemo(() => getWorkflowNav(t), [t]);
+  const priorityLabel = useCallback(
+    (priority) => t[PRIORITY_META[priority]?.labelKey] || t.priorityMedium,
+    [t],
+  );
+  const recurrenceLabel = useCallback(
+    (recurrence) => t[RECURRENCE_LABEL_KEYS[recurrence]] || recurrence,
+    [t],
+  );
+  const weekDayLabels = useMemo(
+    () => t.weekdaysShort || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    [t],
+  );
   const locale = LANG_META[lang]?.locale || DEFAULT_LOCALE;
   const formatDate = (date, options) => date.toLocaleDateString(locale, options);
   const formatDateFromKey = (dateKey, options) => formatDate(parseDateKey(dateKey), options);
@@ -479,6 +486,7 @@ export default function StudyOS() {
   });
 
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+  const [bulkSelectMode, setBulkSelectMode] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [taskDraft, setTaskDraft] = useState(null);
 
@@ -566,13 +574,13 @@ export default function StudyOS() {
     e.preventDefault();
     if (!authUser) return;
     if (!authToken) {
-      setDisplayNameError('Rename is available after signing in with backend.');
+      setDisplayNameError(t.profileRenameRequiresAuth);
       return;
     }
 
     const nextName = displayNameDraft.trim();
     if (nextName.length < 2 || nextName.length > 40) {
-      setDisplayNameError('Name must be between 2 and 40 characters.');
+      setDisplayNameError(t.profileNameLengthError);
       return;
     }
 
@@ -590,7 +598,7 @@ export default function StudyOS() {
       localStorage.setItem(AUTH_USER_KEY, JSON.stringify(res.user));
       setEditingDisplayName(false);
     } catch (err) {
-      setDisplayNameError(err?.message || 'Unable to update name.');
+      setDisplayNameError(err?.message || t.profileNameUpdateError);
     } finally {
       setDisplayNameSaving(false);
     }
@@ -876,7 +884,7 @@ export default function StudyOS() {
     const clone = normalizeTask({
       ...task,
       id: Date.now() + Math.random(),
-      task: `${getTaskTitle(task)} (copy)`,
+      task: `${getTaskTitle(task)} ${t.copySuffix}`,
       completed: false,
       dateKey: task.dateKey,
       createdAt: isoNow(),
@@ -973,7 +981,7 @@ export default function StudyOS() {
     const clone = normalizeNote({
       ...note,
       id: Date.now() + Math.random(),
-      title: `${getNoteTitle(note)} (copy)`,
+      title: `${getNoteTitle(note)} ${t.copySuffix}`,
       pinned: false,
       archived: false,
       createdAt: isoNow(),
@@ -1038,6 +1046,12 @@ export default function StudyOS() {
     if (undoState.type === 'task') {
       setTasks((prev) => [undoState.payload, ...prev]);
     }
+    if (undoState.type === 'task-bulk') {
+      const restored = Array.isArray(undoState.payload) ? undoState.payload : [];
+      if (restored.length) {
+        setTasks((prev) => [...restored, ...prev]);
+      }
+    }
     if (undoState.type === 'note') {
       setNotes((prev) => [undoState.payload, ...prev]);
     }
@@ -1046,6 +1060,14 @@ export default function StudyOS() {
 
   const toggleTaskSelect = (id) => {
     setSelectedTaskIds((prev) => prev.includes(id) ? prev.filter((taskId) => taskId !== id) : [...prev, id]);
+  };
+
+  const toggleBulkSelectMode = () => {
+    setBulkSelectMode((prev) => {
+      const next = !prev;
+      if (!next) setSelectedTaskIds([]);
+      return next;
+    });
   };
 
   const bulkTaskAction = (action) => {
@@ -1408,13 +1430,6 @@ export default function StudyOS() {
     let list = notes.filter((note) => note.archived === noteFilters.archived);
     if (noteFilters.category !== 'all') list = list.filter((note) => note.category === noteFilters.category);
     if (noteFilters.tag !== 'all') list = list.filter((note) => (note.tags || []).includes(noteFilters.tag));
-    if (searchQ.trim()) {
-      const q = searchQ.toLowerCase();
-      list = list.filter((note) =>
-        getNoteTitle(note).toLowerCase().includes(q) ||
-        getNoteContent(note).toLowerCase().includes(q),
-      );
-    }
     if (noteFilters.search.trim()) {
       const q = noteFilters.search.toLowerCase();
       list = list.filter((note) =>
@@ -1434,7 +1449,7 @@ export default function StudyOS() {
     }
 
     return list;
-  }, [notes, noteFilters, searchQ, getNoteContent, getNoteTitle]);
+  }, [notes, noteFilters, getNoteContent, getNoteTitle]);
 
   const selectedNote = displayedNotes.find((note) => note.id === selectedNoteId)
     || notes.find((note) => note.id === selectedNoteId)
@@ -1570,11 +1585,12 @@ Return plain JSON only:
         onAuthSuccess={onAuthSuccess}
         canBypassAuth={DEV_AUTH_BYPASS_ENABLED}
         onBypass={activateDevBypass}
+        text={t}
       />
     );
   }
 
-  const selectedNoteBacklinks = selectedNote ? getBacklinkTitles(selectedNote, notes) : [];
+  const selectedNoteBacklinks = selectedNote ? getBacklinkTitles(selectedNote, notes, t.untitledNote) : [];
 
   const undoLabel = undoState?.type?.includes('task') ? t.undoTaskDeleted : t.undoNoteDeleted;
 
@@ -1598,11 +1614,11 @@ Return plain JSON only:
           <div className="w-10 h-10 rounded-[14px] flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #38BDF8, #1D4ED8)' }}>
             <Zap size={19} className="text-white" strokeWidth={2.5} />
           </div>
-          <span className="syne text-[9px] font-bold text-sky-400 tracking-[3px] uppercase">BLUE</span>
+          <span className="syne text-[9px] font-bold text-sky-400 tracking-[3px] uppercase">{t.brandShort}</span>
         </div>
 
         <div className="flex md:flex-col gap-1.5 items-center">
-          {WORKFLOW_NAV.map((item) => {
+          {workflowNav.map((item) => {
             const IconCmp = item.icon;
             return (
               <button
@@ -1622,7 +1638,7 @@ Return plain JSON only:
         </div>
 
         <div className="hidden md:block">
-          <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=StudyBlue&backgroundColor=bfdbfe" className="w-9 h-9 rounded-full border-2 border-sky-500/30" alt="av" />
+          <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=StudyBlue&backgroundColor=bfdbfe" className="w-9 h-9 rounded-full border-2 border-sky-500/30" alt={t.avatarAlt} />
         </div>
       </nav>
 
@@ -1633,9 +1649,9 @@ Return plain JSON only:
               {formatDate(now, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
             <h1 className="syne text-2xl md:text-[2rem] font-bold text-[#0A1628] leading-tight">
-              {view === 'reflect' ? timeGreeting : WORKFLOW_NAV.find((item) => item.id === view)?.label}
+              {view === 'today' ? timeGreeting : workflowNav.find((item) => item.id === view)?.label}
             </h1>
-            <p className="text-xs text-slate-500 mt-1">Plan | Study | Pomodoro | Capture | Review | Reflect</p>
+            <p className="text-xs text-slate-500 mt-1">{t.workflowLegend}</p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap lg:justify-end">
@@ -1653,12 +1669,12 @@ Return plain JSON only:
                       disabled={displayNameSaving || !authToken}
                       className="px-2 py-1 rounded-lg bg-sky-100 text-sky-700 text-[10px] font-semibold disabled:opacity-60"
                     >
-                      {authToken ? 'Rename' : 'Local mode'}
+                      {authToken ? t.profileRename : t.profileLocalMode}
                     </button>
                   </div>
                   <p className="text-[10px] text-slate-400 truncate">{authUser.email}</p>
                   {isLocalDevMode && (
-                    <p className="text-[10px] text-amber-600 mt-1">Local dev mode: data stays in browser storage.</p>
+                    <p className="text-[10px] text-amber-600 mt-1">{t.profileLocalDevNotice}</p>
                   )}
                   {displayNameError && <p className="text-[10px] text-rose-500 mt-1">{displayNameError}</p>}
                 </>
@@ -1667,7 +1683,7 @@ Return plain JSON only:
                   <input
                     value={displayNameDraft}
                     onChange={(e) => setDisplayNameDraft(e.target.value)}
-                    placeholder="Your name"
+                    placeholder={t.profileNamePlaceholder}
                     className="w-full px-2 py-1.5 rounded-lg border border-sky-100 bg-sky-50/70 text-xs"
                     maxLength={40}
                     disabled={displayNameSaving}
@@ -1678,7 +1694,7 @@ Return plain JSON only:
                       disabled={displayNameSaving}
                       className="px-2 py-1 rounded-lg bg-sky-600 text-white text-[10px] font-semibold disabled:opacity-60"
                     >
-                      {displayNameSaving ? 'Saving...' : 'Save'}
+                      {displayNameSaving ? t.saving : t.save}
                     </button>
                     <button
                       type="button"
@@ -1686,7 +1702,7 @@ Return plain JSON only:
                       disabled={displayNameSaving}
                       className="px-2 py-1 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-semibold disabled:opacity-60"
                     >
-                      Cancel
+                      {t.cancel}
                     </button>
                   </div>
                   {displayNameError && <p className="text-[10px] text-rose-500">{displayNameError}</p>}
@@ -1707,13 +1723,13 @@ Return plain JSON only:
           </div>
         </header>
 
-        {view === 'reflect' && (
+        {view === 'today' && (
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 anim-tab">
             <div className="xl:col-span-2 rounded-3xl p-7 md:p-9 text-white relative overflow-hidden shadow-2xl shadow-blue-950/25" style={{ background: 'linear-gradient(145deg, #0A1628 0%, #0F2A5F 60%, #0F3D7A 100%)' }}>
               <div className="relative z-10">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse block" />
-                  <span className="text-[10px] font-bold text-sky-300 uppercase tracking-[2px]">Action Dashboard</span>
+                  <span className="text-[10px] font-bold text-sky-300 uppercase tracking-[2px]">{t.reflectActionDashboard}</span>
                 </div>
                 <h2 className="syne text-5xl font-bold leading-none">{progress}<span className="text-2xl text-blue-300">%</span></h2>
                 <p className="text-sky-200 text-sm mt-1 mb-5">{completedToday}/{todayTasks.length} {t.reflectTodayTaskSuffix}</p>
@@ -1723,9 +1739,9 @@ Return plain JSON only:
                 </div>
 
                 <div className="flex gap-3">
-                  <Stat label="Overdue" value={overdueTasks.length} />
-                  <Stat label="Review Due" value={reviewDueItems.length} />
-                  <Stat label="Exam Soon" value={upcomingExams.length ? `${upcomingExams[0].daysLeft}d` : '-'} />
+                  <Stat label={t.statOverdue} value={overdueTasks.length} />
+                  <Stat label={t.statReviewDue} value={reviewDueItems.length} />
+                  <Stat label={t.statExamSoon} value={upcomingExams.length ? `${upcomingExams[0].daysLeft}d` : '-'} />
                 </div>
               </div>
               <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full opacity-20" style={{ background: 'radial-gradient(circle, #38BDF8, transparent)' }} />
@@ -1739,7 +1755,7 @@ Return plain JSON only:
                 {nextTaskRecommendation ? (
                   <>
                     <p className="font-semibold text-sm mt-1">{getTaskTitle(nextTaskRecommendation)}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">Due {formatDateFromKey(nextTaskRecommendation.dueDateKey)} · {nextTaskRecommendation.priority}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{t.dueLabel} {formatDateFromKey(nextTaskRecommendation.dueDateKey)} · {priorityLabel(nextTaskRecommendation.priority)}</p>
                     <button onClick={() => setView('plan')} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">{t.reflectOpenPlanner}</button>
                   </>
                 ) : <p className="text-sm text-slate-500 mt-1">{t.reflectNoOpenTasks}</p>}
@@ -1764,7 +1780,7 @@ Return plain JSON only:
                     {laggingSubjects.map((item) => (
                       <div key={item.subject} className="flex items-center justify-between">
                         <span className="text-sm font-medium">{categoryLabel(item.subject)}</span>
-                        <span className="text-xs text-slate-500">{item.completion}% · {item.minutes}m</span>
+                        <span className="text-xs text-slate-500">{item.completion}% · {item.minutes}{t.minutesShort}</span>
                       </div>
                     ))}
                     {!laggingSubjects.length && <p className="text-sm text-slate-400">{t.reflectNoData}</p>}
@@ -1772,27 +1788,27 @@ Return plain JSON only:
                 </div>
                 <div className="rounded-2xl border border-sky-100 p-4">
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{t.reflectWeeklyTrend}</p>
-                  <p className="text-sm text-slate-700">Task completed: <b>{weeklyStats.thisWeekDone}</b> ({weeklyStats.taskDelta >= 0 ? '+' : ''}{weeklyStats.taskDelta} vs last week)</p>
-                  <p className="text-sm text-slate-700 mt-2">Study minutes: <b>{weeklyStats.thisWeekMinutes}</b> ({weeklyStats.minuteDelta >= 0 ? '+' : ''}{weeklyStats.minuteDelta})</p>
+                  <p className="text-sm text-slate-700">{t.weeklyTasksDoneLabel}: <b>{weeklyStats.thisWeekDone}</b> ({weeklyStats.taskDelta >= 0 ? '+' : ''}{weeklyStats.taskDelta} {t.vsLastWeekLabel})</p>
+                  <p className="text-sm text-slate-700 mt-2">{t.weeklyStudyMinutesLabel}: <b>{weeklyStats.thisWeekMinutes}{t.minutesShort}</b> ({weeklyStats.minuteDelta >= 0 ? '+' : ''}{weeklyStats.minuteDelta})</p>
                 </div>
               </div>
             </div>
 
             <div className="glass rounded-3xl p-6 shadow-sm space-y-3">
-              <h3 className="syne font-bold text-[#0A1628]">Risk Radar</h3>
+              <h3 className="syne font-bold text-[#0A1628]">{t.reflectRiskRadar}</h3>
               <div className="rounded-xl border border-sky-100 p-3">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t.reflectNeedsReview}</p>
                 <p className="text-2xl syne">{reviewDueItems.length}</p>
-                <button onClick={() => setView('review')} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">{t.reflectReviewNow}</button>
+                <button onClick={() => setView('library')} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">{t.reflectReviewNow}</button>
               </div>
               <div className="rounded-xl border border-sky-100 p-3">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t.reflectNextWeekConflicts}</p>
                 {nextWeekConflicts.length ? nextWeekConflicts.map((item) => (
-                  <p key={item.dateKey} className="text-sm mt-1">{formatDateFromKey(item.dateKey)} · {item.minutes}m</p>
+                  <p key={item.dateKey} className="text-sm mt-1">{formatDateFromKey(item.dateKey)} · {item.minutes}{t.minutesShort}</p>
                 )) : <p className="text-sm text-slate-500 mt-1">{t.reflectNoLargeConflicts}</p>}
               </div>
               <div className="rounded-xl border border-sky-100 p-3">
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Exam countdown</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t.examCountdownTitle}</p>
                 {upcomingExams.slice(0, 2).map((exam) => (
                   <p key={exam.id} className="text-sm mt-1">{exam.title} · {exam.daysLeft} {t.reflectDays}</p>
                 ))}
@@ -1806,10 +1822,10 @@ Return plain JSON only:
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 anim-tab">
             <div className="xl:col-span-3 glass rounded-3xl p-6 md:p-8 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-                <h2 className="syne text-xl font-bold text-[#0A1628]">Planner System</h2>
+                <h2 className="syne text-xl font-bold text-[#0A1628]">{t.plannerTitle}</h2>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => setCalendarView('month')} className={`px-2.5 py-1.5 text-xs rounded-lg font-semibold ${calendarView === 'month' ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-700'}`}>Month</button>
-                  <button onClick={() => setCalendarView('week')} className={`px-2.5 py-1.5 text-xs rounded-lg font-semibold ${calendarView === 'week' ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-700'}`}>Week Drag</button>
+                  <button onClick={() => setCalendarView('month')} className={`px-2.5 py-1.5 text-xs rounded-lg font-semibold ${calendarView === 'month' ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-700'}`}>{t.month}</button>
+                  <button onClick={() => setCalendarView('week')} className={`px-2.5 py-1.5 text-xs rounded-lg font-semibold ${calendarView === 'week' ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-700'}`}>{t.weekDrag}</button>
                 </div>
               </div>
 
@@ -1827,7 +1843,7 @@ Return plain JSON only:
                   </div>
 
                   <div className="grid grid-cols-7 text-center mb-1">
-                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
+                    {weekDayLabels.map((d) => (
                       <div key={d} className="text-[10px] font-bold text-slate-400 py-2 uppercase tracking-wider">{d}</div>
                     ))}
                   </div>
@@ -1879,7 +1895,7 @@ Return plain JSON only:
                               <p className="text-xs font-semibold line-clamp-2">{getTaskTitle(task)}</p>
                             </div>
                           ))}
-                          {!dayTasks.length && <p className="text-[11px] text-slate-400">No task</p>}
+                          {!dayTasks.length && <p className="text-[11px] text-slate-400">{t.noTask}</p>}
                         </div>
                       </div>
                     );
@@ -1891,8 +1907,17 @@ Return plain JSON only:
             <div className="xl:col-span-2 space-y-5">
               <div className="glass rounded-3xl p-5 shadow-sm">
                 <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <h3 className="syne font-bold text-[#0A1628]">Task Engine</h3>
-                  <span className="text-[10px] font-bold bg-sky-100 text-sky-600 px-2 py-1 rounded-full">{baseVisibleTasks.length} VISIBLE</span>
+                  <h3 className="syne font-bold text-[#0A1628]">{t.taskEngineTitle}</h3>
+                  <span className="text-[10px] font-bold bg-sky-100 text-sky-600 px-2 py-1 rounded-full">
+                    {baseVisibleTasks.length} {t.visibleLabel}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={toggleBulkSelectMode}
+                    className={`text-[10px] font-bold px-2 py-1 rounded-full ${bulkSelectMode ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+                  >
+                    {bulkSelectMode ? t.bulkCancel : t.bulkSelect}
+                  </button>
                 </div>
 
                 <form onSubmit={addTask} className="space-y-2 mb-4">
@@ -1901,33 +1926,33 @@ Return plain JSON only:
                     <input type="time" value={newTask.time} onChange={(e) => setNewTask((prev) => ({ ...prev, time: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs" />
                     <input type="date" value={newTask.dueDateKey} onChange={(e) => setNewTask((prev) => ({ ...prev, dueDateKey: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs" />
                     <select value={newTask.priority} onChange={(e) => setNewTask((prev) => ({ ...prev, priority: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs">
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
+                      <option value="low">{t.priorityLow}</option>
+                      <option value="medium">{t.priorityMedium}</option>
+                      <option value="high">{t.priorityHigh}</option>
                     </select>
                     <select value={newTask.recurring} onChange={(e) => setNewTask((prev) => ({ ...prev, recurring: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs">
-                      <option value="none">No repeat</option>
-                      <option value="daily">Daily</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="monthly">Monthly</option>
+                      <option value="none">{t.recurrenceNone}</option>
+                      <option value="daily">{t.recurrenceDaily}</option>
+                      <option value="weekly">{t.recurrenceWeekly}</option>
+                      <option value="monthly">{t.recurrenceMonthly}</option>
                     </select>
                     <select value={newTask.subject} onChange={(e) => setNewTask((prev) => ({ ...prev, subject: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs">
                       {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
                     </select>
-                    <input type="number" min="15" step="15" value={newTask.duration} onChange={(e) => setNewTask((prev) => ({ ...prev, duration: Number(e.target.value || 15) }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs" placeholder="Duration" />
+                    <input type="number" min="15" step="15" value={newTask.duration} onChange={(e) => setNewTask((prev) => ({ ...prev, duration: Number(e.target.value || 15) }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs" placeholder={t.durationPlaceholder} />
                   </div>
                   <input type="datetime-local" value={newTask.reminderAt} onChange={(e) => setNewTask((prev) => ({ ...prev, reminderAt: e.target.value }))} className="w-full px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs" />
                   <button type="submit" className="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>
-                    <Plus size={14} className="inline mr-1" /> Add Task
+                    <Plus size={14} className="inline mr-1" /> {t.addTask}
                   </button>
                 </form>
 
                 <div className="grid grid-cols-2 gap-2 mb-3">
                   {[
-                    { id: 'today', label: 'Today' },
-                    { id: 'week', label: 'This Week' },
-                    { id: 'upcoming', label: 'Upcoming' },
-                    { id: 'day', label: 'Selected Day' },
+                    { id: 'today', label: t.today },
+                    { id: 'week', label: t.thisWeek },
+                    { id: 'upcoming', label: t.upcoming },
+                    { id: 'day', label: t.selectedDay },
                   ].map((mode) => (
                     <button key={mode.id} onClick={() => setPlannerMode(mode.id)} className={`px-2 py-1.5 rounded-lg text-xs font-semibold ${plannerMode === mode.id ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-700'}`}>
                       {mode.label}
@@ -1938,44 +1963,44 @@ Return plain JSON only:
                 <div className="space-y-2 mb-3">
                   <div className="grid grid-cols-2 gap-2">
                     <select value={taskFilters.status} onChange={(e) => setTaskFilters((prev) => ({ ...prev, status: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                      <option value="open">Open</option>
-                      <option value="done">Done</option>
-                      <option value="all">All</option>
+                      <option value="open">{t.statusOpen}</option>
+                      <option value="done">{t.statusDone}</option>
+                      <option value="all">{t.statusAll}</option>
                     </select>
                     <select value={taskFilters.priority} onChange={(e) => setTaskFilters((prev) => ({ ...prev, priority: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                      <option value="all">All priorities</option>
-                      <option value="high">High</option>
-                      <option value="medium">Medium</option>
-                      <option value="low">Low</option>
+                      <option value="all">{t.priorityAll}</option>
+                      <option value="high">{t.priorityHigh}</option>
+                      <option value="medium">{t.priorityMedium}</option>
+                      <option value="low">{t.priorityLow}</option>
                     </select>
                     <select value={taskFilters.subject} onChange={(e) => setTaskFilters((prev) => ({ ...prev, subject: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                      <option value="all">All subjects</option>
+                      <option value="all">{t.subjectAll}</option>
                       {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
                     </select>
                     <select value={taskFilters.sort} onChange={(e) => setTaskFilters((prev) => ({ ...prev, sort: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                      <option value="dueAsc">Sort due</option>
-                      <option value="priority">Sort priority</option>
-                      <option value="duration">Sort duration</option>
-                      <option value="updated">Sort updated</option>
+                      <option value="dueAsc">{t.sortDue}</option>
+                      <option value="priority">{t.sortPriority}</option>
+                      <option value="duration">{t.sortDuration}</option>
+                      <option value="updated">{t.sortUpdated}</option>
                     </select>
                   </div>
                   <div className="flex items-center gap-2">
-                    <input value={taskFilters.query} onChange={(e) => setTaskFilters((prev) => ({ ...prev, query: e.target.value }))} placeholder="Search task..." className="flex-1 px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs" />
+                    <input value={taskFilters.query} onChange={(e) => setTaskFilters((prev) => ({ ...prev, query: e.target.value }))} placeholder={t.searchTaskPlaceholder} className="flex-1 px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs" />
                     <label className="text-xs inline-flex items-center gap-1.5">
                       <input type="checkbox" checked={taskFilters.overdueOnly} onChange={(e) => setTaskFilters((prev) => ({ ...prev, overdueOnly: e.target.checked }))} />
-                      Overdue
+                      {t.overdueOnlyLabel}
                     </label>
                   </div>
                 </div>
 
-                {selectedTaskIds.length > 0 && (
+                {bulkSelectMode && selectedTaskIds.length > 0 && (
                   <div className="mb-3 rounded-xl border border-sky-100 bg-sky-50 p-2.5 flex flex-wrap gap-1.5 items-center">
-                    <span className="text-xs font-semibold text-sky-700">{selectedTaskIds.length} selected</span>
-                    <button onClick={() => bulkTaskAction('complete')} className="px-2 py-1 text-[11px] rounded bg-emerald-100 text-emerald-700">Complete</button>
-                    <button onClick={() => bulkTaskAction('archive')} className="px-2 py-1 text-[11px] rounded bg-slate-200 text-slate-700">Archive</button>
-                    <button onClick={() => bulkTaskAction('tomorrow')} className="px-2 py-1 text-[11px] rounded bg-sky-100 text-sky-700">Tomorrow</button>
-                    <button onClick={() => bulkTaskAction('nextWeek')} className="px-2 py-1 text-[11px] rounded bg-indigo-100 text-indigo-700">Next week</button>
-                    <button onClick={() => bulkTaskAction('delete')} className="px-2 py-1 text-[11px] rounded bg-rose-100 text-rose-700">Delete</button>
+                    <span className="text-xs font-semibold text-sky-700">{selectedTaskIds.length} {t.selectedLabel}</span>
+                    <button onClick={() => bulkTaskAction('complete')} className="px-2 py-1 text-[11px] rounded bg-emerald-100 text-emerald-700">{t.complete}</button>
+                    <button onClick={() => bulkTaskAction('archive')} className="px-2 py-1 text-[11px] rounded bg-slate-200 text-slate-700">{t.archive}</button>
+                    <button onClick={() => bulkTaskAction('tomorrow')} className="px-2 py-1 text-[11px] rounded bg-sky-100 text-sky-700">{t.tomorrow}</button>
+                    <button onClick={() => bulkTaskAction('nextWeek')} className="px-2 py-1 text-[11px] rounded bg-indigo-100 text-indigo-700">{t.nextWeek}</button>
+                    <button onClick={() => bulkTaskAction('delete')} className="px-2 py-1 text-[11px] rounded bg-rose-100 text-rose-700">{t.delete}</button>
                   </div>
                 )}
 
@@ -1996,49 +2021,62 @@ Return plain JSON only:
                                     <input type="time" value={taskDraft.time || '09:00'} onChange={(e) => setTaskDraft((prev) => ({ ...prev, time: e.target.value }))} className="px-2 py-1.5 text-xs rounded border border-slate-300" />
                                     <input type="date" value={taskDraft.dueDateKey} onChange={(e) => setTaskDraft((prev) => ({ ...prev, dueDateKey: e.target.value }))} className="px-2 py-1.5 text-xs rounded border border-slate-300" />
                                     <select value={taskDraft.priority} onChange={(e) => setTaskDraft((prev) => ({ ...prev, priority: e.target.value }))} className="px-2 py-1.5 text-xs rounded border border-slate-300">
-                                      <option value="low">Low</option>
-                                      <option value="medium">Medium</option>
-                                      <option value="high">High</option>
+                                      <option value="low">{t.priorityLow}</option>
+                                      <option value="medium">{t.priorityMedium}</option>
+                                      <option value="high">{t.priorityHigh}</option>
                                     </select>
                                     <select value={taskDraft.recurring} onChange={(e) => setTaskDraft((prev) => ({ ...prev, recurring: e.target.value }))} className="px-2 py-1.5 text-xs rounded border border-slate-300">
-                                      <option value="none">No repeat</option>
-                                      <option value="daily">Daily</option>
-                                      <option value="weekly">Weekly</option>
-                                      <option value="monthly">Monthly</option>
+                                      <option value="none">{t.recurrenceNone}</option>
+                                      <option value="daily">{t.recurrenceDaily}</option>
+                                      <option value="weekly">{t.recurrenceWeekly}</option>
+                                      <option value="monthly">{t.recurrenceMonthly}</option>
                                     </select>
                                   </div>
                                   <div className="flex gap-2 justify-end">
-                                    <button onClick={() => { setEditingTaskId(null); setTaskDraft(null); }} className="px-2 py-1 text-xs rounded bg-slate-100">Cancel</button>
-                                    <button onClick={saveTaskEdit} className="px-2 py-1 text-xs rounded bg-sky-600 text-white">Save</button>
+                                    <button onClick={() => { setEditingTaskId(null); setTaskDraft(null); }} className="px-2 py-1 text-xs rounded bg-slate-100">{t.cancel}</button>
+                                    <button onClick={saveTaskEdit} className="px-2 py-1 text-xs rounded bg-sky-600 text-white">{t.save}</button>
                                   </div>
                                 </div>
                               ) : (
                                 <>
                                   <div className="flex items-start gap-2">
-                                    <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => toggleTaskSelect(task.id)} className="mt-1" />
-                                    <button onClick={() => toggleTask(task.id)} className={`w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0 ${task.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 hover:border-sky-400'}`}>
-                                      {task.completed && <Check size={11} strokeWidth={3.5} className="text-white" />}
-                                    </button>
+                                    {bulkSelectMode ? (
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedTaskIds.includes(task.id)}
+                                        onChange={() => toggleTaskSelect(task.id)}
+                                        className="mt-1"
+                                        aria-label={t.selectTask}
+                                      />
+                                    ) : (
+                                      <button
+                                        onClick={() => toggleTask(task.id)}
+                                        className={`w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0 ${task.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 hover:border-sky-400'}`}
+                                        aria-label={t.completeTask}
+                                      >
+                                        {task.completed && <Check size={11} strokeWidth={3.5} className="text-white" />}
+                                      </button>
+                                    )}
                                     <div className="flex-1 min-w-0">
                                       <p className={`text-sm font-medium ${task.completed ? 'strike text-slate-400' : 'text-slate-800'}`}>{getTaskTitle(task)}</p>
                                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${PRIORITY_META[task.priority]?.cls || PRIORITY_META.medium.cls}`}>{PRIORITY_META[task.priority]?.label || 'Medium'}</span>
-                                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-sky-100 text-sky-700">Due {formatDateFromKey(task.dueDateKey)}</span>
-                                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600">{task.duration}m</span>
-                                        {task.recurring !== 'none' && <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-indigo-100 text-indigo-700">{task.recurring}</span>}
-                                        {overdue && <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-rose-100 text-rose-700 inline-flex items-center gap-1"><AlertTriangle size={10} /> overdue</span>}
+                                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${PRIORITY_META[task.priority]?.cls || PRIORITY_META.medium.cls}`}>{priorityLabel(task.priority)}</span>
+                                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-sky-100 text-sky-700">{t.dueLabel} {formatDateFromKey(task.dueDateKey)}</span>
+                                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600">{task.duration}{t.minutesShort}</span>
+                                        {task.recurring !== 'none' && <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-indigo-100 text-indigo-700">{recurrenceLabel(task.recurring)}</span>}
+                                        {overdue && <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-rose-100 text-rose-700 inline-flex items-center gap-1"><AlertTriangle size={10} /> {t.overdueLabel}</span>}
                                       </div>
-                                      <p className="text-[11px] text-slate-500 mt-1">{task.time} · Scheduled {formatDateFromKey(task.dateKey)} · Reminder {task.reminderAt ? formatDateTime(task.reminderAt) : '-'}</p>
+                                      <p className="text-[11px] text-slate-500 mt-1">{task.time} · {t.scheduledLabel} {formatDateFromKey(task.dateKey)} · {t.reminderLabel} {task.reminderAt ? formatDateTime(task.reminderAt) : '-'}</p>
                                     </div>
                                   </div>
 
                                   <div className="mt-2 flex flex-wrap gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => openTaskEdit(task)} className="px-2 py-1 text-[11px] rounded bg-sky-100 text-sky-700">Edit</button>
-                                    <button onClick={() => duplicateTask(task)} className="px-2 py-1 text-[11px] rounded bg-indigo-100 text-indigo-700">Duplicate</button>
-                                    <button onClick={() => archiveTask(task.id)} className="px-2 py-1 text-[11px] rounded bg-slate-200 text-slate-700">Archive</button>
-                                    <button onClick={() => quickMoveTask(task.id, 1)} className="px-2 py-1 text-[11px] rounded bg-cyan-100 text-cyan-700">Tomorrow</button>
-                                    <button onClick={() => quickMoveTask(task.id, 7)} className="px-2 py-1 text-[11px] rounded bg-blue-100 text-blue-700">Next week</button>
-                                    <button onClick={() => deleteTask(task.id)} className="px-2 py-1 text-[11px] rounded bg-rose-100 text-rose-700">Delete</button>
+                                    <button onClick={() => openTaskEdit(task)} className="px-2 py-1 text-[11px] rounded bg-sky-100 text-sky-700">{t.edit}</button>
+                                    <button onClick={() => duplicateTask(task)} className="px-2 py-1 text-[11px] rounded bg-indigo-100 text-indigo-700">{t.duplicate}</button>
+                                    <button onClick={() => archiveTask(task.id)} className="px-2 py-1 text-[11px] rounded bg-slate-200 text-slate-700">{t.archive}</button>
+                                    <button onClick={() => quickMoveTask(task.id, 1)} className="px-2 py-1 text-[11px] rounded bg-cyan-100 text-cyan-700">{t.tomorrow}</button>
+                                    <button onClick={() => quickMoveTask(task.id, 7)} className="px-2 py-1 text-[11px] rounded bg-blue-100 text-blue-700">{t.nextWeek}</button>
+                                    <button onClick={() => deleteTask(task.id)} className="px-2 py-1 text-[11px] rounded bg-rose-100 text-rose-700">{t.delete}</button>
                                   </div>
                                 </>
                               )}
@@ -2059,12 +2097,12 @@ Return plain JSON only:
               </div>
 
               <div className="glass rounded-3xl p-5 shadow-sm">
-                <h3 className="syne font-bold text-[#0A1628] mb-2">Upcoming List</h3>
+                <h3 className="syne font-bold text-[#0A1628] mb-2">{t.upcomingListTitle}</h3>
                 <div className="space-y-2">
                   {upcomingTasks.map((task) => (
                     <div key={task.id} className="rounded-xl border border-sky-100 px-3 py-2">
                       <p className="text-sm font-semibold">{getTaskTitle(task)}</p>
-                      <p className="text-[11px] text-slate-500">{formatDateFromKey(task.dateKey)} · due {formatDateFromKey(task.dueDateKey)} · {task.time}</p>
+                      <p className="text-[11px] text-slate-500">{formatDateFromKey(task.dateKey)} · {t.dueLabel} {formatDateFromKey(task.dueDateKey)} · {task.time}</p>
                     </div>
                   ))}
                   {!upcomingTasks.length && <p className="text-sm text-slate-500">{t.taskNoUpcoming}</p>}
@@ -2074,157 +2112,111 @@ Return plain JSON only:
           </div>
         )}
 
-        {view === 'study' && (
+        {view === 'learn' && (
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 anim-tab">
-            <div className="xl:col-span-2 glass rounded-3xl p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="syne text-xl font-bold text-[#0A1628]">Study Sessions</h2>
-                <BookMarked size={18} className="text-sky-500" />
-              </div>
+            <div className="xl:col-span-2 space-y-5">
+              <div className="glass rounded-3xl p-6 md:p-8 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+                  <div>
+                    <h2 className="syne text-2xl font-bold text-[#0A1628]">{t.pomodoroTitle}</h2>
+                    <p className="text-sm text-slate-500 mt-1">{t.pomodoroHint}</p>
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">
+                    {pomodoroConfig.soundEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
+                    <span>{t.pomodoroSound}</span>
+                  </div>
+                </div>
 
-              <form onSubmit={addStudySession} className="grid grid-cols-1 md:grid-cols-5 gap-2 mb-4">
-                <select value={newSession.subject} onChange={(e) => setNewSession((prev) => ({ ...prev, subject: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
-                  {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
-                </select>
-                <input type="number" min="15" step="15" value={newSession.duration} onChange={(e) => setNewSession((prev) => ({ ...prev, duration: Number(e.target.value || 15) }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" placeholder="Minutes" />
-                <input type="date" value={newSession.dateKey} onChange={(e) => setNewSession((prev) => ({ ...prev, dateKey: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
-                <select value={newSession.focus} onChange={(e) => setNewSession((prev) => ({ ...prev, focus: Number(e.target.value) }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
-                  {[1, 2, 3, 4, 5].map((f) => <option key={f} value={f}>Focus {f}/5</option>)}
-                </select>
-                <button type="submit" className="px-4 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>
-                  Add Session
-                </button>
-              </form>
+                <div className="grid grid-cols-3 gap-2 mb-5">
+                  {[
+                    { id: 'focus', label: t.pomodoroFocus },
+                    { id: 'short', label: t.pomodoroShortBreak },
+                    { id: 'long', label: t.pomodoroLongBreak },
+                  ].map((mode) => (
+                    <button
+                      key={mode.id}
+                      onClick={() => setPomodoroModeAndReset(mode.id)}
+                      className={`px-3 py-2 rounded-xl text-xs font-semibold ${pomodoroMode === mode.id ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-700'}`}
+                    >
+                      {mode.label}
+                    </button>
+                  ))}
+                </div>
 
-              <div className="space-y-2 max-h-[420px] overflow-y-auto scroll">
-                {studySessions.map((session) => (
-                  <div key={session.id} className="rounded-xl border border-sky-100 p-3 flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
-                      <BookMarked size={15} />
+                <div className="rounded-3xl border border-sky-100 bg-white/70 p-6 md:p-8">
+                  <div className="text-center">
+                    <p className="text-xs uppercase tracking-wider text-slate-500">{t.pomodoroCurrentSession}: {pomodoroModeLabel[pomodoroMode]}</p>
+                    <p className="syne text-6xl leading-none mt-3 text-[#0A1628]">{formatCountdown(pomodoroSecondsLeft)}</p>
+                    <p className="text-xs text-slate-500 mt-2">{t.pomodoroUntilLongBreak}: {pomodoroUntilLongBreak}</p>
+                    <div className="h-2.5 mt-4 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full rounded-full bg-sky-500 transition-all duration-300" style={{ width: `${pomodoroProgress}%` }} />
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold">{categoryLabel(session.subject)} · {session.duration}m</p>
-                      <p className="text-[11px] text-slate-500">{formatDateFromKey(session.dateKey)} · focus {session.focus}/5</p>
-                    </div>
-                    <button onClick={() => setStudySessions((prev) => prev.filter((s) => s.id !== session.id))} className="text-slate-300 hover:text-rose-500">
-                      <Trash2 size={14} />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-5">
+                    <button onClick={togglePomodoro} className="px-3 py-2.5 rounded-xl text-xs font-bold text-white inline-flex items-center justify-center gap-1.5" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>
+                      {pomodoroRunning ? <Pause size={12} /> : <Play size={12} />}
+                      {pomodoroRunning ? t.pomodoroPause : t.pomodoroStart}
+                    </button>
+                    <button onClick={resetPomodoro} className="px-3 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 inline-flex items-center justify-center gap-1.5">
+                      <RotateCw size={12} />
+                      {t.pomodoroReset}
+                    </button>
+                    <button onClick={skipPomodoroPhase} className="px-3 py-2.5 rounded-xl text-xs font-semibold bg-indigo-100 text-indigo-700 inline-flex items-center justify-center gap-1.5">
+                      <SkipForward size={12} />
+                      {t.pomodoroSkip}
                     </button>
                   </div>
-                ))}
-                {!studySessions.length && <p className="text-sm text-slate-500">{t.studyNoSession}</p>}
-              </div>
-            </div>
+                </div>
 
-            <div className="space-y-5">
-              <div className="glass rounded-3xl p-5 shadow-sm">
-                <h3 className="syne font-bold text-[#0A1628] mb-3">Goals</h3>
-                <form onSubmit={addGoal} className="space-y-2 mb-3">
-                  <input value={newGoal.title} onChange={(e) => setNewGoal((prev) => ({ ...prev, title: e.target.value }))} placeholder="Goal title" className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
-                  <div className="grid grid-cols-2 gap-2">
-                    <select value={newGoal.subject} onChange={(e) => setNewGoal((prev) => ({ ...prev, subject: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
-                      {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
-                    </select>
-                    <input type="date" value={newGoal.targetDateKey} onChange={(e) => setNewGoal((prev) => ({ ...prev, targetDateKey: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
+                <div className="grid grid-cols-2 gap-3 mt-4">
+                  <div className="rounded-2xl border border-sky-100 bg-sky-50/60 px-4 py-3">
+                    <p className="text-xs text-slate-500">{t.pomodoroCompleted}</p>
+                    <p className="syne text-2xl leading-none text-slate-700 mt-1">{pomodoroCompleted}</p>
                   </div>
-                  <button type="submit" className="w-full px-4 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>Add Goal</button>
+                  <div className="rounded-2xl border border-sky-100 bg-sky-50/60 px-4 py-3">
+                    <p className="text-xs text-slate-500">{t.pomodoroTodayFocus}</p>
+                    <p className="syne text-2xl leading-none text-slate-700 mt-1">{pomodoroTodayFocusMinutes} {t.pomodoroMinutesUnit}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="glass rounded-3xl p-6 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="syne text-xl font-bold text-[#0A1628]">{t.studySessionsTitle}</h2>
+                  <BookMarked size={18} className="text-sky-500" />
+                </div>
+
+                <form onSubmit={addStudySession} className="grid grid-cols-1 md:grid-cols-5 gap-2 mb-4">
+                  <select value={newSession.subject} onChange={(e) => setNewSession((prev) => ({ ...prev, subject: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
+                    {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
+                  </select>
+                  <input type="number" min="15" step="15" value={newSession.duration} onChange={(e) => setNewSession((prev) => ({ ...prev, duration: Number(e.target.value || 15) }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" placeholder={t.minutesPlaceholder} />
+                  <input type="date" value={newSession.dateKey} onChange={(e) => setNewSession((prev) => ({ ...prev, dateKey: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
+                  <select value={newSession.focus} onChange={(e) => setNewSession((prev) => ({ ...prev, focus: Number(e.target.value) }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
+                    {[1, 2, 3, 4, 5].map((f) => <option key={f} value={f}>{t.focusLabel} {f}{t.focusScaleSuffix}</option>)}
+                  </select>
+                  <button type="submit" className="px-4 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>
+                    {t.addSession}
+                  </button>
                 </form>
 
-                <div className="space-y-2 max-h-[220px] overflow-y-auto scroll">
-                  {goals.map((goal) => (
-                    <div key={goal.id} className="rounded-xl border border-sky-100 p-2.5">
-                      <p className="text-sm font-semibold">{goal.title}</p>
-                      <p className="text-[11px] text-slate-500">{categoryLabel(goal.subject)} · target {formatDateFromKey(goal.targetDateKey)}</p>
-                      <button onClick={() => setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, completed: !g.completed } : g))} className={`mt-1 px-2 py-1 text-[11px] rounded ${goal.completed ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{goal.completed ? 'Done' : 'Mark done'}</button>
+                <div className="space-y-2 max-h-[420px] overflow-y-auto scroll">
+                  {studySessions.map((session) => (
+                    <div key={session.id} className="rounded-xl border border-sky-100 p-3 flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
+                        <BookMarked size={15} />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold">{categoryLabel(session.subject)} · {session.duration}{t.minutesShort}</p>
+                        <p className="text-[11px] text-slate-500">{formatDateFromKey(session.dateKey)} · {t.focusLabel} {session.focus}{t.focusScaleSuffix}</p>
+                      </div>
+                      <button onClick={() => setStudySessions((prev) => prev.filter((s) => s.id !== session.id))} className="text-slate-300 hover:text-rose-500">
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   ))}
-                  {!goals.length && <p className="text-sm text-slate-500">{t.goalsKeepMomentum}</p>}
-                </div>
-              </div>
-
-              <div className="glass rounded-3xl p-5 shadow-sm">
-                <h3 className="syne font-bold text-[#0A1628] mb-3">Progress by Subject</h3>
-                <div className="space-y-2">
-                  {subjectProgress.map((item) => (
-                    <div key={item.subject}>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span>{categoryLabel(item.subject)}</span>
-                        <span>{item.completion}% · {item.minutes}m</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                        <div className="h-full rounded-full bg-sky-500" style={{ width: `${item.completion}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {view === 'pomodoro' && (
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 anim-tab">
-            <div className="xl:col-span-2 glass rounded-3xl p-6 md:p-8 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
-                <div>
-                  <h2 className="syne text-2xl font-bold text-[#0A1628]">{t.pomodoroTitle}</h2>
-                  <p className="text-sm text-slate-500 mt-1">{t.pomodoroHint}</p>
-                </div>
-                <div className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">
-                  {pomodoroConfig.soundEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
-                  <span>{t.pomodoroSound}</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 mb-5">
-                {[
-                  { id: 'focus', label: t.pomodoroFocus },
-                  { id: 'short', label: t.pomodoroShortBreak },
-                  { id: 'long', label: t.pomodoroLongBreak },
-                ].map((mode) => (
-                  <button
-                    key={mode.id}
-                    onClick={() => setPomodoroModeAndReset(mode.id)}
-                    className={`px-3 py-2 rounded-xl text-xs font-semibold ${pomodoroMode === mode.id ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-700'}`}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="rounded-3xl border border-sky-100 bg-white/70 p-6 md:p-8">
-                <div className="text-center">
-                  <p className="text-xs uppercase tracking-wider text-slate-500">{t.pomodoroCurrentSession}: {pomodoroModeLabel[pomodoroMode]}</p>
-                  <p className="syne text-6xl leading-none mt-3 text-[#0A1628]">{formatCountdown(pomodoroSecondsLeft)}</p>
-                  <p className="text-xs text-slate-500 mt-2">{t.pomodoroUntilLongBreak}: {pomodoroUntilLongBreak}</p>
-                  <div className="h-2.5 mt-4 rounded-full bg-slate-100 overflow-hidden">
-                    <div className="h-full rounded-full bg-sky-500 transition-all duration-300" style={{ width: `${pomodoroProgress}%` }} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-5">
-                  <button onClick={togglePomodoro} className="px-3 py-2.5 rounded-xl text-xs font-bold text-white inline-flex items-center justify-center gap-1.5" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>
-                    {pomodoroRunning ? <Pause size={12} /> : <Play size={12} />}
-                    {pomodoroRunning ? t.pomodoroPause : t.pomodoroStart}
-                  </button>
-                  <button onClick={resetPomodoro} className="px-3 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 inline-flex items-center justify-center gap-1.5">
-                    <RotateCw size={12} />
-                    {t.pomodoroReset}
-                  </button>
-                  <button onClick={skipPomodoroPhase} className="px-3 py-2.5 rounded-xl text-xs font-semibold bg-indigo-100 text-indigo-700 inline-flex items-center justify-center gap-1.5">
-                    <SkipForward size={12} />
-                    {t.pomodoroSkip}
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 mt-4">
-                <div className="rounded-2xl border border-sky-100 bg-sky-50/60 px-4 py-3">
-                  <p className="text-xs text-slate-500">{t.pomodoroCompleted}</p>
-                  <p className="syne text-2xl leading-none text-slate-700 mt-1">{pomodoroCompleted}</p>
-                </div>
-                <div className="rounded-2xl border border-sky-100 bg-sky-50/60 px-4 py-3">
-                  <p className="text-xs text-slate-500">{t.pomodoroTodayFocus}</p>
-                  <p className="syne text-2xl leading-none text-slate-700 mt-1">{pomodoroTodayFocusMinutes} {t.pomodoroMinutesUnit}</p>
+                  {!studySessions.length && <p className="text-sm text-slate-500">{t.studyNoSession}</p>}
                 </div>
               </div>
             </div>
@@ -2318,7 +2310,7 @@ Return plain JSON only:
                   <div className="rounded-xl border border-sky-100 bg-sky-50/60 p-3">
                     <p className="text-xs text-slate-500">{t.reflectWhatFirst}</p>
                     <p className="text-sm font-semibold mt-1">{getTaskTitle(nextTaskRecommendation)}</p>
-                    <p className="text-[11px] text-slate-500 mt-1">Due {formatDateFromKey(nextTaskRecommendation.dueDateKey)}</p>
+                    <p className="text-[11px] text-slate-500 mt-1">{t.dueLabel} {formatDateFromKey(nextTaskRecommendation.dueDateKey)}</p>
                     <button onClick={() => setView('plan')} className="mt-2 px-3 py-1.5 rounded-lg bg-sky-100 text-sky-700 text-xs font-semibold">{t.reflectOpenPlanner}</button>
                   </div>
                 ) : (
@@ -2328,15 +2320,57 @@ Return plain JSON only:
                   </div>
                 )}
               </div>
+
+              <div className="glass rounded-3xl p-5 shadow-sm">
+                <h3 className="syne font-bold text-[#0A1628] mb-3">{t.goalsTitle}</h3>
+                <form onSubmit={addGoal} className="space-y-2 mb-3">
+                  <input value={newGoal.title} onChange={(e) => setNewGoal((prev) => ({ ...prev, title: e.target.value }))} placeholder={t.goalTitlePlaceholder} className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select value={newGoal.subject} onChange={(e) => setNewGoal((prev) => ({ ...prev, subject: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
+                      {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
+                    </select>
+                    <input type="date" value={newGoal.targetDateKey} onChange={(e) => setNewGoal((prev) => ({ ...prev, targetDateKey: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
+                  </div>
+                  <button type="submit" className="w-full px-4 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>{t.addGoal}</button>
+                </form>
+
+                <div className="space-y-2 max-h-[220px] overflow-y-auto scroll">
+                  {goals.map((goal) => (
+                    <div key={goal.id} className="rounded-xl border border-sky-100 p-2.5">
+                      <p className="text-sm font-semibold">{goal.title}</p>
+                      <p className="text-[11px] text-slate-500">{categoryLabel(goal.subject)} · {t.targetLabel} {formatDateFromKey(goal.targetDateKey)}</p>
+                      <button onClick={() => setGoals((prev) => prev.map((g) => g.id === goal.id ? { ...g, completed: !g.completed } : g))} className={`mt-1 px-2 py-1 text-[11px] rounded ${goal.completed ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{goal.completed ? t.done : t.markDone}</button>
+                    </div>
+                  ))}
+                  {!goals.length && <p className="text-sm text-slate-500">{t.goalsKeepMomentum}</p>}
+                </div>
+              </div>
+
+              <div className="glass rounded-3xl p-5 shadow-sm">
+                <h3 className="syne font-bold text-[#0A1628] mb-3">{t.progressBySubjectTitle}</h3>
+                <div className="space-y-2">
+                  {subjectProgress.map((item) => (
+                    <div key={item.subject}>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span>{categoryLabel(item.subject)}</span>
+                        <span>{item.completion}% · {item.minutes}{t.minutesShort}</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                        <div className="h-full rounded-full bg-sky-500" style={{ width: `${item.completion}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        {view === 'capture' && (
+        {view === 'library' && (
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 anim-tab">
             <div className="xl:col-span-3">
               <div className="glass rounded-3xl p-5 shadow-sm sticky top-4">
-                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[2.5px] mb-3">Categories & Tags</h3>
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[2.5px] mb-3">{t.categoriesTagsTitle}</h3>
                 <div className="space-y-1 mb-4">
                   {['all', ...categories].map((cat) => {
                     const cc = catColor(cat);
@@ -2369,18 +2403,18 @@ Return plain JSON only:
                 </div>
 
                 <div className="space-y-2 mb-3">
-                  <input value={searchQ} onChange={(e) => setSearchQ(e.target.value)} placeholder="Search notes..." className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs" />
+                  <input value={noteFilters.search} onChange={(e) => setNoteFilters((prev) => ({ ...prev, search: e.target.value }))} placeholder={t.searchNotes} className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs" />
                   <select value={noteFilters.tag} onChange={(e) => setNoteFilters((prev) => ({ ...prev, tag: e.target.value }))} className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                    <option value="all">All tags</option>
+                    <option value="all">{t.allTagsLabel}</option>
                     {allTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
                   </select>
                   <select value={noteFilters.sort} onChange={(e) => setNoteFilters((prev) => ({ ...prev, sort: e.target.value }))} className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                    <option value="updated">Updated time</option>
-                    <option value="title">Title</option>
+                    <option value="updated">{t.updatedTimeLabel}</option>
+                    <option value="title">{t.titleLabel}</option>
                   </select>
                   <label className="text-xs inline-flex items-center gap-1.5">
                     <input type="checkbox" checked={noteFilters.archived} onChange={(e) => setNoteFilters((prev) => ({ ...prev, archived: e.target.checked }))} />
-                    Show archived notes
+                    {t.showArchivedLabel}
                   </label>
                 </div>
 
@@ -2390,18 +2424,18 @@ Return plain JSON only:
 
             <div className="xl:col-span-4 space-y-4">
               <div className="glass rounded-3xl p-5 shadow-sm">
-                <h3 className="syne font-bold text-[#0A1628] mb-3">Quick Capture</h3>
+                <h3 className="syne font-bold text-[#0A1628] mb-3">{t.quickCaptureTitle}</h3>
                 <input value={newNote.title} onChange={(e) => setNewNote((prev) => ({ ...prev, title: e.target.value }))} placeholder={t.docTitle} className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-sm mb-2" />
                 <textarea value={newNote.content} onChange={(e) => setNewNote((prev) => ({ ...prev, content: e.target.value }))} rows={4} placeholder={t.captureMarkdownHint} className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-sm mb-2" />
                 <div className="grid grid-cols-2 gap-2 mb-2">
                   <select value={newNote.category} onChange={(e) => setNewNote((prev) => ({ ...prev, category: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
                     {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
                   </select>
-                  <input value={newNote.tagsInput} onChange={(e) => setNewNote((prev) => ({ ...prev, tagsInput: e.target.value }))} placeholder="tags: exam, formula" className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
+                  <input value={newNote.tagsInput} onChange={(e) => setNewNote((prev) => ({ ...prev, tagsInput: e.target.value }))} placeholder={t.tagsPlaceholder} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
                 </div>
-                <input value={newNote.attachmentInput} onChange={(e) => setNewNote((prev) => ({ ...prev, attachmentInput: e.target.value }))} placeholder="Attachment URL / filename" className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs mb-2" />
+                <input value={newNote.attachmentInput} onChange={(e) => setNewNote((prev) => ({ ...prev, attachmentInput: e.target.value }))} placeholder={t.attachmentPlaceholder} className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs mb-2" />
                 <button onClick={addNote} disabled={!newNote.title.trim()} className="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40" style={{ background: 'linear-gradient(135deg, #0A1628, #0F2A5F)' }}>
-                  Save Note
+                  {t.saveNote}
                 </button>
               </div>
 
@@ -2435,18 +2469,18 @@ Return plain JSON only:
               </div>
             </div>
 
-            <div className="xl:col-span-5">
-              <div className="glass rounded-3xl p-5 shadow-sm min-h-[760px]">
+            <div className="xl:col-span-5 space-y-5">
+              <div className="glass rounded-3xl p-5 shadow-sm min-h-[640px]">
                 {selectedNote ? (
                   <>
                     <div className="flex items-center justify-between gap-2 mb-3">
-                      <h3 className="syne font-bold text-[#0A1628]">Note Workspace</h3>
+                      <h3 className="syne font-bold text-[#0A1628]">{t.noteWorkspaceTitle}</h3>
                       <div className="flex flex-wrap gap-1.5">
-                        <button onClick={() => togglePinNote(selectedNote.id)} className="px-2 py-1 text-[11px] rounded bg-amber-100 text-amber-700 inline-flex items-center gap-1">{selectedNote.pinned ? <PinOff size={12} /> : <Pin size={12} />}{selectedNote.pinned ? 'Unpin' : 'Pin'}</button>
-                        <button onClick={() => duplicateNote(selectedNote)} className="px-2 py-1 text-[11px] rounded bg-indigo-100 text-indigo-700 inline-flex items-center gap-1"><Copy size={12} />Duplicate</button>
-                        <button onClick={() => archiveNote(selectedNote.id, !selectedNote.archived)} className="px-2 py-1 text-[11px] rounded bg-slate-100 text-slate-700 inline-flex items-center gap-1"><Archive size={12} />{selectedNote.archived ? 'Unarchive' : 'Archive'}</button>
-                        <button onClick={() => openNoteEdit(selectedNote)} className="px-2 py-1 text-[11px] rounded bg-sky-100 text-sky-700">Edit</button>
-                        <button onClick={() => deleteNote(selectedNote.id)} className="px-2 py-1 text-[11px] rounded bg-rose-100 text-rose-700 inline-flex items-center gap-1"><Trash2 size={12} />Delete</button>
+                        <button onClick={() => togglePinNote(selectedNote.id)} className="px-2 py-1 text-[11px] rounded bg-amber-100 text-amber-700 inline-flex items-center gap-1">{selectedNote.pinned ? <PinOff size={12} /> : <Pin size={12} />}{selectedNote.pinned ? t.unpin : t.pin}</button>
+                        <button onClick={() => duplicateNote(selectedNote)} className="px-2 py-1 text-[11px] rounded bg-indigo-100 text-indigo-700 inline-flex items-center gap-1"><Copy size={12} />{t.duplicate}</button>
+                        <button onClick={() => archiveNote(selectedNote.id, !selectedNote.archived)} className="px-2 py-1 text-[11px] rounded bg-slate-100 text-slate-700 inline-flex items-center gap-1"><Archive size={12} />{selectedNote.archived ? t.unarchive : t.archive}</button>
+                        <button onClick={() => openNoteEdit(selectedNote)} className="px-2 py-1 text-[11px] rounded bg-sky-100 text-sky-700">{t.edit}</button>
+                        <button onClick={() => deleteNote(selectedNote.id)} className="px-2 py-1 text-[11px] rounded bg-rose-100 text-rose-700 inline-flex items-center gap-1"><Trash2 size={12} />{t.delete}</button>
                       </div>
                     </div>
 
@@ -2456,19 +2490,19 @@ Return plain JSON only:
                           <input value={noteDraft.title} onChange={(e) => setNoteDraft((prev) => ({ ...prev, title: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm" />
                           <textarea value={noteDraft.content} onChange={(e) => setNoteDraft((prev) => ({ ...prev, content: e.target.value }))} rows={12} className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm" />
                           <div className="grid grid-cols-2 gap-2">
-                            <input value={noteDraft.tagsInput} onChange={(e) => setNoteDraft((prev) => ({ ...prev, tagsInput: e.target.value }))} placeholder="tags" className="px-3 py-2 rounded-xl border border-slate-300 text-xs" />
-                            <input value={noteDraft.attachmentInput} onChange={(e) => setNoteDraft((prev) => ({ ...prev, attachmentInput: e.target.value }))} placeholder="new attachment" className="px-3 py-2 rounded-xl border border-slate-300 text-xs" />
+                            <input value={noteDraft.tagsInput} onChange={(e) => setNoteDraft((prev) => ({ ...prev, tagsInput: e.target.value }))} placeholder={t.tagsPlaceholderShort} className="px-3 py-2 rounded-xl border border-slate-300 text-xs" />
+                            <input value={noteDraft.attachmentInput} onChange={(e) => setNoteDraft((prev) => ({ ...prev, attachmentInput: e.target.value }))} placeholder={t.newAttachmentPlaceholder} className="px-3 py-2 rounded-xl border border-slate-300 text-xs" />
                           </div>
                           <div className="flex gap-2 justify-end">
-                            <button onClick={() => { setEditingNoteId(null); setNoteDraft(null); }} className="px-3 py-1.5 text-xs rounded bg-slate-100">Cancel</button>
-                            <button onClick={saveNoteEdit} className="px-3 py-1.5 text-xs rounded bg-sky-600 text-white">Save</button>
+                            <button onClick={() => { setEditingNoteId(null); setNoteDraft(null); }} className="px-3 py-1.5 text-xs rounded bg-slate-100">{t.cancel}</button>
+                            <button onClick={saveNoteEdit} className="px-3 py-1.5 text-xs rounded bg-sky-600 text-white">{t.save}</button>
                           </div>
                         </div>
                         <div className="rounded-2xl border border-sky-100 p-3 bg-white/70">
-                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Markdown preview / summary</p>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t.markdownPreviewTitle}</p>
                           <h4 className="syne font-bold mb-2">{noteDraft.title}</h4>
                           <p className="text-sm whitespace-pre-wrap text-slate-700">{noteDraft.content}</p>
-                          <div className="mt-4 p-2 rounded-lg bg-sky-50 text-xs text-sky-700">Summary: {summarizeNote(noteDraft.content)}</div>
+                          <div className="mt-4 p-2 rounded-lg bg-sky-50 text-xs text-sky-700">{t.summaryLabel}: {summarizeNote(noteDraft.content)}</div>
                         </div>
                       </div>
                     ) : (
@@ -2483,26 +2517,26 @@ Return plain JSON only:
 
                         <div className="space-y-3">
                           <div className="rounded-2xl border border-sky-100 p-3">
-                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Backlinks</p>
+                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t.backlinksTitle}</p>
                             {selectedNoteBacklinks.length ? selectedNoteBacklinks.map((title) => <p key={title} className="text-sm">[[{title}]]</p>) : <p className="text-sm text-slate-500">{t.noteNoBacklinks}</p>}
                           </div>
 
                           <div className="rounded-2xl border border-sky-100 p-3">
-                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Attachments</p>
+                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t.attachmentsTitle}</p>
                             {(selectedNote.attachments || []).length ? selectedNote.attachments.map((att, idx) => <p key={`${att}-${idx}`} className="text-sm text-slate-700">• {att}</p>) : <p className="text-sm text-slate-500">{t.noteNoAttachments}</p>}
                           </div>
 
                           <div className="rounded-2xl border border-sky-100 p-3">
                             <div className="flex items-center justify-between mb-2">
-                              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Flashcards</p>
-                              <button onClick={() => convertNoteToFlashcards(selectedNote.id)} className="px-2 py-1 text-[11px] rounded bg-indigo-100 text-indigo-700">Convert</button>
+                              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t.flashcardsTitle}</p>
+                              <button onClick={() => convertNoteToFlashcards(selectedNote.id)} className="px-2 py-1 text-[11px] rounded bg-indigo-100 text-indigo-700">{t.convert}</button>
                             </div>
                             {(selectedNote.flashcards || []).length ? (
                               <div className="space-y-1.5 max-h-[120px] overflow-y-auto scroll">
                                 {selectedNote.flashcards.map((card, idx) => (
                                   <div key={`${card.question}-${idx}`} className="text-xs rounded-lg bg-slate-50 p-2">
-                                    <p className="font-semibold">Q: {card.question}</p>
-                                    <p className="text-slate-600">A: {card.answer}</p>
+                                    <p className="font-semibold">{t.flashcardQuestionLabel}: {card.question}</p>
+                                    <p className="text-slate-600">{t.flashcardAnswerLabel}: {card.answer}</p>
                                   </div>
                                 ))}
                               </div>
@@ -2510,13 +2544,13 @@ Return plain JSON only:
                           </div>
 
                           <div className="rounded-2xl border border-sky-100 p-3">
-                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Version history</p>
+                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t.versionHistoryTitle}</p>
                             {(selectedNote.versions || []).length ? (
                               <div className="space-y-1.5 max-h-[120px] overflow-y-auto scroll">
                                 {selectedNote.versions.map((ver, idx) => (
                                   <div key={`${ver.updatedAt}-${idx}`} className="flex items-center justify-between text-xs rounded-lg bg-slate-50 p-2">
                                     <span>{formatDateTime(ver.updatedAt)}</span>
-                                    <button onClick={() => restoreVersion(selectedNote.id, ver)} className="px-2 py-1 rounded bg-sky-100 text-sky-700">Restore</button>
+                                    <button onClick={() => restoreVersion(selectedNote.id, ver)} className="px-2 py-1 rounded bg-sky-100 text-sky-700">{t.restore}</button>
                                   </div>
                                 ))}
                               </div>
@@ -2530,33 +2564,27 @@ Return plain JSON only:
                   <div className="text-center py-24 text-slate-500">{t.noteSelectToStart}</div>
                 )}
               </div>
-            </div>
-          </div>
-        )}
 
-        {view === 'review' && (
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 anim-tab">
-            <div className="xl:col-span-2 space-y-5">
               <div className="glass rounded-3xl p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="syne text-xl font-bold text-[#0A1628]">Revision Tracker</h2>
+                  <h2 className="syne text-xl font-bold text-[#0A1628]">{t.revisionTrackerTitle}</h2>
                   <ClipboardList size={18} className="text-sky-500" />
                 </div>
-                <div className="space-y-2 max-h-[430px] overflow-y-auto scroll">
+                <div className="space-y-2 max-h-[360px] overflow-y-auto scroll">
                   {revisions.map((item) => {
                     const due = item.nextReviewKey <= todayKey;
                     return (
                       <div key={item.id} className={`rounded-xl border p-3 ${due ? 'border-rose-200 bg-rose-50/70' : 'border-sky-100 bg-white/70'}`}>
                         <p className="text-sm font-semibold">{item.question}</p>
-                        <p className="text-xs text-slate-500">{categoryLabel(item.subject)} · next {formatDateFromKey(item.nextReviewKey)} · interval {item.intervalDays}d</p>
+                        <p className="text-xs text-slate-500">{categoryLabel(item.subject)} · {t.nextLabel} {formatDateFromKey(item.nextReviewKey)} · {t.intervalLabel} {item.intervalDays}{t.daysShort}</p>
                         <details className="mt-1">
-                          <summary className="text-xs cursor-pointer text-sky-600">Show answer</summary>
+                          <summary className="text-xs cursor-pointer text-sky-600">{t.showAnswer}</summary>
                           <p className="text-sm mt-1 text-slate-700">{item.answer}</p>
                         </details>
                         <div className="mt-2 flex gap-1.5">
-                          <button onClick={() => reviewRevision(item.id, true)} className="px-2 py-1 text-[11px] rounded bg-emerald-100 text-emerald-700">Remembered</button>
-                          <button onClick={() => reviewRevision(item.id, false)} className="px-2 py-1 text-[11px] rounded bg-amber-100 text-amber-700">Need review</button>
-                          <button onClick={() => setRevisions((prev) => prev.filter((r) => r.id !== item.id))} className="px-2 py-1 text-[11px] rounded bg-slate-100 text-slate-700">Remove</button>
+                          <button onClick={() => reviewRevision(item.id, true)} className="px-2 py-1 text-[11px] rounded bg-emerald-100 text-emerald-700">{t.remembered}</button>
+                          <button onClick={() => reviewRevision(item.id, false)} className="px-2 py-1 text-[11px] rounded bg-amber-100 text-amber-700">{t.needReview}</button>
+                          <button onClick={() => setRevisions((prev) => prev.filter((r) => r.id !== item.id))} className="px-2 py-1 text-[11px] rounded bg-slate-100 text-slate-700">{t.remove}</button>
                         </div>
                       </div>
                     );
@@ -2565,38 +2593,17 @@ Return plain JSON only:
                 </div>
               </div>
 
-              <div className="glass rounded-3xl p-6 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="syne font-bold text-[#0A1628]">Weekly Review</h3>
-                  <BarChart3 size={18} className="text-sky-500" />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="rounded-2xl border border-sky-100 p-4">
-                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Execution</p>
-                    <p className="text-2xl syne mt-1">{weeklyStats.thisWeekDone}</p>
-                    <p className="text-sm text-slate-500">Tasks done this week ({weeklyStats.taskDelta >= 0 ? '+' : ''}{weeklyStats.taskDelta})</p>
-                  </div>
-                  <div className="rounded-2xl border border-sky-100 p-4">
-                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Deep Work</p>
-                    <p className="text-2xl syne mt-1">{weeklyStats.thisWeekMinutes}m</p>
-                    <p className="text-sm text-slate-500">Study minutes ({weeklyStats.minuteDelta >= 0 ? '+' : ''}{weeklyStats.minuteDelta})</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-5">
               <div className="glass rounded-3xl p-5 shadow-sm">
-                <h3 className="syne font-bold text-[#0A1628] mb-3">Exam Countdown</h3>
+                <h3 className="syne font-bold text-[#0A1628] mb-3">{t.examCountdownTitle}</h3>
                 <form onSubmit={addExam} className="space-y-2 mb-3">
-                  <input value={newExam.title} onChange={(e) => setNewExam((prev) => ({ ...prev, title: e.target.value }))} placeholder="Exam name" className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
+                  <input value={newExam.title} onChange={(e) => setNewExam((prev) => ({ ...prev, title: e.target.value }))} placeholder={t.examNamePlaceholder} className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
                   <div className="grid grid-cols-2 gap-2">
                     <select value={newExam.subject} onChange={(e) => setNewExam((prev) => ({ ...prev, subject: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
                       {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
                     </select>
                     <input type="date" value={newExam.dateKey} onChange={(e) => setNewExam((prev) => ({ ...prev, dateKey: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
                   </div>
-                  <button type="submit" className="w-full px-4 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>Add exam</button>
+                  <button type="submit" className="w-full px-4 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>{t.addExam}</button>
                 </form>
 
                 <div className="space-y-2 max-h-[240px] overflow-y-auto scroll">
@@ -2610,31 +2617,12 @@ Return plain JSON only:
                   {!upcomingExams.length && <p className="text-sm text-slate-500">{t.examNoUpcoming}</p>}
                 </div>
               </div>
-
-              <div className="glass rounded-3xl p-5 shadow-sm">
-                <h3 className="syne font-bold text-[#0A1628] mb-2">Upcoming + Overdue</h3>
-                <div className="space-y-2 max-h-[280px] overflow-y-auto scroll">
-                  {overdueTasks.slice(0, 3).map((task) => (
-                    <div key={task.id} className="rounded-xl border border-rose-200 bg-rose-50/60 p-2.5">
-                      <p className="text-sm font-semibold">{getTaskTitle(task)}</p>
-                      <p className="text-xs text-rose-700">Overdue since {formatDateFromKey(task.dueDateKey)}</p>
-                    </div>
-                  ))}
-                  {upcomingTasks.slice(0, 3).map((task) => (
-                    <div key={task.id} className="rounded-xl border border-sky-100 p-2.5">
-                      <p className="text-sm font-semibold">{getTaskTitle(task)}</p>
-                      <p className="text-xs text-slate-500">{formatDateFromKey(task.dateKey)} · due {formatDateFromKey(task.dueDateKey)}</p>
-                    </div>
-                  ))}
-                  {!overdueTasks.length && !upcomingTasks.length && <p className="text-sm text-slate-500">{t.reviewNoCombinedItems}</p>}
-                </div>
-              </div>
             </div>
           </div>
         )}
 
         <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[90] text-center text-xs text-slate-500 pointer-events-none">
-          © 2026 by peekk_apoo. All rights reserved.
+          {t.footerText}
         </div>
       </main>
 
@@ -2643,7 +2631,7 @@ Return plain JSON only:
           <div className="px-4 py-2 rounded-xl bg-[#0A1628] text-white text-sm shadow-xl border border-white/10 flex items-center gap-2">
             <Undo2 size={14} />
             <span>{undoLabel}</span>
-            <button onClick={undoDelete} className="px-2 py-1 text-xs rounded bg-sky-500/30">Undo</button>
+            <button onClick={undoDelete} className="px-2 py-1 text-xs rounded bg-sky-500/30">{t.undo}</button>
           </div>
         </div>
       )}
@@ -2655,7 +2643,7 @@ Return plain JSON only:
               <Bot size={16} className="text-sky-300" />
             </div>
             <div className="flex-1">
-              <p className="syne text-sm font-bold">BlueStudy AI</p>
+              <p className="syne text-sm font-bold">{t.aiBrand}</p>
               <p className="text-[10px] text-sky-300">{t.aiHelper}</p>
             </div>
             <button onClick={() => setAiOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">

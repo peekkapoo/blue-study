@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { authApi, IS_API_BASE_CONFIGURED } from './api';
+import { DEFAULT_LANG, getUIText } from './App.i18n';
 
 const boxStyle = {
   background: 'linear-gradient(140deg, #08142A 0%, #0E2B60 100%)',
 };
 
-export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onBypass = null }) {
+export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onBypass = null, text = null }) {
+  const t = text || getUIText(DEFAULT_LANG);
   const [mode, setMode] = useState('login');
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
@@ -59,7 +61,7 @@ export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onByp
 
       await onAuthSuccess(data.token, data.user);
     } catch (err) {
-      setError(err.message || 'Authentication failed');
+      setError(err.message || t.authFailed);
     } finally {
       setLoading(false);
     }
@@ -69,15 +71,15 @@ export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onByp
     <div className="min-h-screen px-4 py-10" style={{ background: 'linear-gradient(180deg, #E0F2FE 0%, #EFF6FF 100%)' }}>
       <div className="max-w-5xl mx-auto grid lg:grid-cols-2 gap-6 items-stretch">
         <section className="rounded-3xl p-8 text-white shadow-2xl" style={boxStyle}>
-          <p className="text-xs uppercase tracking-[3px] text-sky-300 font-semibold">Blue Study</p>
-          <h1 className="text-4xl mt-4 font-bold leading-tight">Study smarter with one secure account</h1>
+          <p className="text-xs uppercase tracking-[3px] text-sky-300 font-semibold">{t.authBrand}</p>
+          <h1 className="text-4xl mt-4 font-bold leading-tight">{t.authHeadline}</h1>
           <p className="mt-5 text-sky-100 text-sm leading-relaxed">
-            Create an account to save all your notes, schedules, and preferences. Data is synced per user.
+            {t.authSubhead}
           </p>
           <ul className="mt-6 space-y-2 text-sm text-sky-100">
-            <li>Sign up and sign in with email</li>
-            <li>JWT-secured backend authentication</li>
-            <li>Per-user study data sync</li>
+            <li>{t.authBenefit1}</li>
+            <li>{t.authBenefit2}</li>
+            <li>{t.authBenefit3}</li>
           </ul>
         </section>
 
@@ -87,13 +89,13 @@ export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onByp
               onClick={() => setMode('login')}
               className={`flex-1 py-2.5 text-sm rounded-lg font-semibold transition ${mode === 'login' ? 'bg-white text-sky-700 shadow' : 'text-slate-500'}`}
             >
-              Sign in
+              {t.authSignIn}
             </button>
             <button
               onClick={() => setMode('register')}
               className={`flex-1 py-2.5 text-sm rounded-lg font-semibold transition ${mode === 'register' ? 'bg-white text-sky-700 shadow' : 'text-slate-500'}`}
             >
-              Create account
+              {t.authCreateAccount}
             </button>
           </div>
 
@@ -102,7 +104,7 @@ export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onByp
               <input
                 value={form.name}
                 onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                placeholder="Display name"
+                placeholder={t.authDisplayName}
                 required
                 className="w-full px-4 py-3 rounded-xl border border-sky-100 bg-sky-50/40 focus:outline-none focus:ring-2 focus:ring-sky-200"
               />
@@ -111,7 +113,7 @@ export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onByp
               type="email"
               value={form.email}
               onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
-              placeholder="Email"
+              placeholder={t.authEmail}
               required
               className="w-full px-4 py-3 rounded-xl border border-sky-100 bg-sky-50/40 focus:outline-none focus:ring-2 focus:ring-sky-200"
             />
@@ -119,7 +121,7 @@ export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onByp
               type="password"
               value={form.password}
               onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
-              placeholder="Password (minimum 6 characters)"
+              placeholder={t.authPasswordHint}
               required
               minLength={6}
               className="w-full px-4 py-3 rounded-xl border border-sky-100 bg-sky-50/40 focus:outline-none focus:ring-2 focus:ring-sky-200"
@@ -129,8 +131,8 @@ export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onByp
             {!backendReady && (
               <p className="text-sm text-amber-700 bg-amber-50 rounded-xl px-3 py-2">
                 {IS_API_BASE_CONFIGURED
-                  ? 'Backend appears offline. Run npm run dev, or run frontend and backend in separate terminals.'
-                  : 'VITE_API_BASE is not configured on Vercel. Set VITE_API_BASE=https://YOUR_BACKEND_URL and redeploy the frontend.'}
+                  ? t.authBackendOffline
+                  : t.authBackendMissing}
               </p>
             )}
 
@@ -140,7 +142,7 @@ export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onByp
               className="w-full py-3 rounded-xl text-white font-semibold disabled:opacity-60"
               style={{ background: 'linear-gradient(135deg, #0EA5E9 0%, #1D4ED8 100%)' }}
             >
-              {loading ? 'Processing...' : mode === 'login' ? 'Sign in' : 'Create account'}
+              {loading ? t.authProcessing : mode === 'login' ? t.authSignIn : t.authCreateAccount}
             </button>
 
             {canBypass && (
@@ -150,10 +152,10 @@ export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onByp
                   onClick={onBypass}
                   className="w-full py-2.5 rounded-xl border border-sky-200 text-sky-700 bg-sky-50 font-semibold"
                 >
-                  Continue in local mode (dev)
+                  {t.authContinueLocal}
                 </button>
                 <p className="text-[11px] text-slate-500 text-center">
-                  Skips backend auth. Data is saved only in this browser.
+                  {t.authLocalHint}
                 </p>
               </>
             )}
