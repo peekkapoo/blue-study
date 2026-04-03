@@ -2471,6 +2471,10 @@ Return plain JSON only:
             </div>
           </div>
         )}
+
+        <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[90] text-center text-xs text-slate-500 pointer-events-none">
+          © 2026 by peekk_apoo. All rights reserved.
+        </div>
       </main>
 
       {undoState && (
