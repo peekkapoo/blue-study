@@ -9,10 +9,10 @@
   "scripts": {
     "start": "npm --prefix backend run start",
     "start:frontend": "vite preview",
-    "dev": "vite",
+    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
     "dev:client": "vite",
     "dev:server": "npm --prefix backend run dev",
-    "dev:full": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:full": "npm run dev",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"

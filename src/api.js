@@ -34,7 +34,7 @@ function getNetworkErrorMessage(error) {
   }
   return import.meta.env.PROD
     ? 'Unable to connect to backend. Check your backend deployment and VITE_API_BASE.'
-    : 'Unable to connect to backend. Run npm run dev:full, or run frontend and backend in separate terminals.';
+    : 'Unable to connect to backend. Run npm run dev, or run frontend and backend in separate terminals.';
 }
 
 export async function apiRequest(path, options = {}, token) {

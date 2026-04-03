@@ -128,7 +128,7 @@ export default function AuthScreen({ onAuthSuccess }) {
             {!backendReady && (
               <p className="text-sm text-amber-700 bg-amber-50 rounded-xl px-3 py-2">
                 {IS_API_BASE_CONFIGURED
-                  ? 'Backend appears offline. Run npm run dev:full, or run frontend and backend in separate terminals.'
+                  ? 'Backend appears offline. Run npm run dev, or run frontend and backend in separate terminals.'
                   : 'VITE_API_BASE is not configured on Vercel. Set VITE_API_BASE=https://YOUR_BACKEND_URL and redeploy the frontend.'}
               </p>
             )}

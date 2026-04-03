@@ -61,7 +61,7 @@ Notes:
 Frontend only:
 
 ```bash
-npm run dev
+npm run dev:client
 ```
 
 Backend only:
@@ -71,6 +71,12 @@ npm run dev:server
 ```
 
 Run both together:
+
+```bash
+npm run dev
+```
+
+Alias (same as above):
 
 ```bash
 npm run dev:full
