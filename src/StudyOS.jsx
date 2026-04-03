@@ -460,10 +460,6 @@ export default function StudyOS() {
     }
   });
   const [authReady, setAuthReady] = useState(false);
-  const [editingDisplayName, setEditingDisplayName] = useState(false);
-  const [displayNameDraft, setDisplayNameDraft] = useState('');
-  const [displayNameSaving, setDisplayNameSaving] = useState(false);
-  const [displayNameError, setDisplayNameError] = useState('');
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileDraft, setProfileDraft] = useState({ name: '', picture: '' });
   const [profileSaving, setProfileSaving] = useState(false);
@@ -633,10 +629,6 @@ export default function StudyOS() {
     setAuthToken('');
     setAuthUser(null);
     setAuthReady(true);
-    setEditingDisplayName(false);
-    setDisplayNameDraft('');
-    setDisplayNameSaving(false);
-    setDisplayNameError('');
     setProfileOpen(false);
     setProfileDraft({ name: '', picture: '' });
     setProfileSaving(false);
@@ -647,51 +639,6 @@ export default function StudyOS() {
     localStorage.removeItem(AUTH_USER_KEY);
   };
 
-  const startDisplayNameEdit = () => {
-    setDisplayNameDraft(authUser?.name || '');
-    setDisplayNameError('');
-    setEditingDisplayName(true);
-  };
-
-  const cancelDisplayNameEdit = () => {
-    setEditingDisplayName(false);
-    setDisplayNameDraft(authUser?.name || '');
-    setDisplayNameError('');
-  };
-
-  const saveDisplayName = async (e) => {
-    e.preventDefault();
-    if (!authUser) return;
-    if (!authToken) {
-      setDisplayNameError(t.profileRenameRequiresAuth);
-      return;
-    }
-
-    const nextName = displayNameDraft.trim();
-    if (nextName.length < 2 || nextName.length > 40) {
-      setDisplayNameError(t.profileNameLengthError);
-      return;
-    }
-
-    if (nextName === authUser.name) {
-      setEditingDisplayName(false);
-      setDisplayNameError('');
-      return;
-    }
-
-    try {
-      setDisplayNameSaving(true);
-      setDisplayNameError('');
-      const res = await authApi.updateProfile(authToken, { name: nextName });
-      setAuthUser(res.user);
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(res.user));
-      setEditingDisplayName(false);
-    } catch (err) {
-      setDisplayNameError(err?.message || t.profileNameUpdateError);
-    } finally {
-      setDisplayNameSaving(false);
-    }
-  };
 
   const openProfileEditor = () => {
     if (!authUser) return;
@@ -835,9 +782,6 @@ export default function StudyOS() {
     setAuthToken('');
     setAuthUser({ ...DEV_BYPASS_USER });
     setAuthReady(true);
-    setEditingDisplayName(false);
-    setDisplayNameSaving(false);
-    setDisplayNameError('');
   }, []);
 
   useEffect(() => {
@@ -866,10 +810,6 @@ export default function StudyOS() {
     };
     bootstrapAuth();
   }, [authToken, hydrateUserData]);
-
-  useEffect(() => {
-    setDisplayNameDraft(authUser?.name || '');
-  }, [authUser?.name]);
 
   useEffect(() => {
     setChatHistory((prev) => {
@@ -1844,7 +1784,7 @@ Return plain JSON only:
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 md:px-10 pt-6 pb-8 relative z-10">
-        <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-7">
+        <header className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-7">
           <div>
             <p className="text-[11px] font-bold text-sky-500 uppercase tracking-[2.5px] mb-1">
               {formatDate(now, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
@@ -1855,77 +1795,37 @@ Return plain JSON only:
             <p className="text-xs text-slate-500 mt-1">{t.workflowLegend}</p>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap lg:justify-end">
-            <div className="px-3 py-2 glass rounded-xl min-w-[132px]">
-              <p className="text-[11px] leading-tight text-slate-500 font-semibold">{t.currentTime}</p>
-              <p className="text-xs text-slate-700 font-bold">{currentTimeLabel}</p>
+          <div className="flex flex-col items-end gap-3 w-full lg:w-auto">
+            <div className="w-full lg:w-[280px] rounded-2xl border border-sky-100/80 bg-white/75 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur">
+              <div className="px-4 py-3 flex items-start justify-between gap-3">
+                <div className="flex-1 text-right">
+                  <p className="text-[10px] font-semibold uppercase tracking-[2px] text-sky-500/70">{t.currentTime}</p>
+                  <p className="text-sm font-bold text-slate-700">{currentTimeLabel}</p>
+                </div>
+                <span className="mt-1.5 w-2.5 h-2.5 rounded-full bg-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.6)]" />
+              </div>
+              <div className="h-px bg-gradient-to-r from-transparent via-sky-200/70 to-transparent" />
+              <div className="px-4 py-3 flex items-center justify-between gap-3">
+                <p className="text-[12px] font-semibold text-slate-600 truncate">{authUser.name}</p>
+                <div className="relative">
+                  <img src={avatarSrc} alt={t.avatarAlt} className="w-8 h-8 rounded-full border border-sky-200 object-cover" />
+                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-white" />
+                </div>
+              </div>
             </div>
-            <div className="px-3 py-2 glass rounded-xl min-w-[220px]">
-              {!editingDisplayName ? (
-                <>
-                  <div className="flex items-center gap-2">
-                    <img src={avatarSrc} alt={t.avatarAlt} className="w-8 h-8 rounded-full border border-sky-200 object-cover" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-[11px] leading-tight text-slate-500 font-semibold truncate">{authUser.name}</p>
-                        <button
-                          onClick={startDisplayNameEdit}
-                          disabled={displayNameSaving || !authToken}
-                          className="px-2 py-1 rounded-lg bg-sky-100 text-sky-700 text-[10px] font-semibold disabled:opacity-60"
-                        >
-                          {authToken ? t.profileRename : t.profileLocalMode}
-                        </button>
-                      </div>
-                      <p className="text-[10px] text-slate-400 truncate">{authUser.email}</p>
-                    </div>
-                  </div>
-                  {isLocalDevMode && (
-                    <p className="text-[10px] text-amber-600 mt-1">{t.profileLocalDevNotice}</p>
-                  )}
-                  {displayNameError && <p className="text-[10px] text-rose-500 mt-1">{displayNameError}</p>}
-                </>
-              ) : (
-                <form onSubmit={saveDisplayName} className="space-y-1">
-                  <input
-                    value={displayNameDraft}
-                    onChange={(e) => setDisplayNameDraft(e.target.value)}
-                    placeholder={t.profileNamePlaceholder}
-                    className="w-full px-2 py-1.5 rounded-lg border border-sky-100 bg-sky-50/70 text-xs"
-                    maxLength={40}
-                    disabled={displayNameSaving}
-                  />
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="submit"
-                      disabled={displayNameSaving}
-                      className="px-2 py-1 rounded-lg bg-sky-600 text-white text-[10px] font-semibold disabled:opacity-60"
-                    >
-                      {displayNameSaving ? t.saving : t.save}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={cancelDisplayNameEdit}
-                      disabled={displayNameSaving}
-                      className="px-2 py-1 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-semibold disabled:opacity-60"
-                    >
-                      {t.cancel}
-                    </button>
-                  </div>
-                  {displayNameError && <p className="text-[10px] text-rose-500">{displayNameError}</p>}
-                </form>
-              )}
+            <div className="flex items-center gap-2 flex-wrap lg:justify-end">
+              <button onClick={toggleTheme} aria-label={t.theme} className="px-3 py-2 glass rounded-xl text-xs font-semibold inline-flex items-center gap-1.5">
+                {theme === 'dark' ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-indigo-500" />}
+                {t.theme}: {theme === 'dark' ? t.dark : t.light}
+              </button>
+              <Languages size={16} className="text-sky-500" />
+              <select value={lang} onChange={(e) => setLang(e.target.value)} aria-label={t.language} className="px-2.5 py-2 glass rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-sky-400/30">
+                {Object.entries(LANG_META).map(([k, v]) => <option key={k} value={k}>{v.flag} {v.name}</option>)}
+              </select>
+              <button onClick={logout} className="px-3 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(135deg, #0EA5E9 0%, #1D4ED8 100%)' }}>
+                {t.logout}
+              </button>
             </div>
-            <button onClick={toggleTheme} aria-label={t.theme} className="px-3 py-2 glass rounded-xl text-xs font-semibold inline-flex items-center gap-1.5">
-              {theme === 'dark' ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-indigo-500" />}
-              {t.theme}: {theme === 'dark' ? t.dark : t.light}
-            </button>
-            <Languages size={16} className="text-sky-500" />
-            <select value={lang} onChange={(e) => setLang(e.target.value)} aria-label={t.language} className="px-2.5 py-2 glass rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-sky-400/30">
-              {Object.entries(LANG_META).map(([k, v]) => <option key={k} value={k}>{v.flag} {v.name}</option>)}
-            </select>
-            <button onClick={logout} className="px-3 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(135deg, #0EA5E9 0%, #1D4ED8 100%)' }}>
-              {t.logout}
-            </button>
           </div>
         </header>
 
