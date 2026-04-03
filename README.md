@@ -48,6 +48,8 @@ PORT=4000
 FRONTEND_ORIGIN=http://localhost:5173,https://blue-study.vercel.app
 JWT_SECRET=replace_with_a_long_random_secret
 GOOGLE_CLIENT_ID=your_google_web_client_id.apps.googleusercontent.com
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
 
 Notes:
@@ -55,6 +57,9 @@ Notes:
 - `FRONTEND_ORIGIN` supports multiple origins separated by commas.
 - `VITE_API_BASE` should point to your deployed backend URL in production.
 - If `VITE_API_BASE` is missing in dev, frontend falls back to `http://localhost:4000`.
+- `SUPABASE_URL` must be the Project URL (`https://...supabase.co`) from Supabase settings.
+- Do not use `sb_publishable_...` as `SUPABASE_URL`.
+- `SUPABASE_SERVICE_ROLE_KEY` must stay backend-only (never put in frontend env).
 
 ## 3) Run
 
@@ -105,7 +110,7 @@ If backend returns `503` on Render:
 
 - Check logs for startup crash.
 - Ensure Node runtime is 18+.
-- Ensure env vars are set: `JWT_SECRET`, `FRONTEND_ORIGIN`.
+- Ensure env vars are set: `JWT_SECRET`, `FRONTEND_ORIGIN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 - Redeploy after updating env.
 
 ## 5) API summary
@@ -117,6 +122,6 @@ If backend returns `503` on Render:
 - `GET /api/user-data`
 - `PUT /api/user-data`
 
-User data is persisted in `backend/server/data/db.json`.
+User data is persisted in Supabase when configured. If Supabase env vars are missing, backend falls back to local file storage (`backend/server/data/db.json`).
 
-Production note: lowdb uses local filesystem storage and is not durable on many cloud platforms. Use a managed database (Postgres/MySQL/MongoDB) for production workloads.
+Production note: local file storage is not durable on many cloud platforms. Supabase is recommended for durable storage.
