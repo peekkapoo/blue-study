@@ -1,67 +1,103 @@
 # Blue Study
 
-Blue Study now includes a full auth backend:
+Blue Study is now split into two separate apps in one repo:
 
-- Register / login with email + password
-- JWT session handling
-- Per-user data storage (notes, tasks, categories, language)
+- Frontend (Vite + React): repo root
+- Backend (Express auth/data API): `backend/`
+
+This makes frontend work easier and safer because UI changes can be done independently from backend internals.
+
+## Project structure
+
+```text
+blue-study/
+	src/                  # frontend source
+	backend/
+		server/             # backend source
+		package.json
+```
 
 ## 1) Install
+
+Install frontend dependencies:
 
 ```bash
 npm install
 ```
 
+Install backend dependencies:
+
+```bash
+npm --prefix backend install
+```
+
 ## 2) Environment variables
 
-Create `.env` from `.env.example` and fill values:
+Frontend env (repo root `.env`, based on `.env.example`):
+
+```env
+VITE_GOOGLE_CLIENT_ID=your_google_web_client_id.apps.googleusercontent.com
+VITE_API_BASE=http://localhost:4000
+VITE_API_TIMEOUT_MS=12000
+```
+
+Backend env (`backend/.env`, based on `backend/.env.example`):
 
 ```env
 PORT=4000
-FRONTEND_ORIGIN=https://blue-study.vercel.app
+FRONTEND_ORIGIN=http://localhost:5173,https://blue-study.vercel.app
 JWT_SECRET=replace_with_a_long_random_secret
 GOOGLE_CLIENT_ID=your_google_web_client_id.apps.googleusercontent.com
-VITE_GOOGLE_CLIENT_ID=your_google_web_client_id.apps.googleusercontent.com
-VITE_API_BASE=https://your-backend-domain
-VITE_API_TIMEOUT_MS=12000
 ```
 
 Notes:
 
 - `FRONTEND_ORIGIN` supports multiple origins separated by commas.
-- `VITE_API_BASE` should point to the deployed backend URL in production.
-- If `VITE_API_BASE` is missing, frontend falls back to `http://localhost:4000`.
+- `VITE_API_BASE` should point to your deployed backend URL in production.
+- If `VITE_API_BASE` is missing in dev, frontend falls back to `http://localhost:4000`.
 
-## 3) Run project
+## 3) Run
 
-Run frontend + backend together (recommended):
+Frontend only:
+
+```bash
+npm run dev
+```
+
+Backend only:
+
+```bash
+npm run dev:server
+```
+
+Run both together:
 
 ```bash
 npm run dev:full
 ```
 
-Or run separately:
+## 4) Deployment notes
 
-```bash
-npm run dev:server
-npm run dev
-```
+Frontend deploy (for example Vercel):
 
-## Render backend settings (production)
+- Build command: `npm run build`
+- Output: `dist`
 
-- Service type: `Web Service`
+Backend deploy (for example Render):
+
+- Root directory: `backend`
 - Build command: `npm install`
 - Start command: `npm start`
 - Health check path: `/api/health`
 
 If backend returns `503` on Render:
 
-- Check Render logs for startup crash.
+- Check logs for startup crash.
 - Ensure Node runtime is 18+.
 - Ensure env vars are set: `JWT_SECRET`, `FRONTEND_ORIGIN`.
-- Redeploy service after updating env.
+- Redeploy after updating env.
 
-## 4) API summary
+## 5) API summary
 
 - `POST /api/auth/register`
 - `POST /api/auth/login`
@@ -70,6 +106,6 @@ If backend returns `503` on Render:
 - `GET /api/user-data`
 - `PUT /api/user-data`
 
-User data is persisted in `server/data/db.json`.
+User data is persisted in `backend/server/data/db.json`.
 
-Production note: lowdb uses local filesystem storage and is not durable on many cloud platforms. Use a managed database (Postgres/MySQL/MongoDB) for real production workloads.
+Production note: lowdb uses local filesystem storage and is not durable on many cloud platforms. Use a managed database (Postgres/MySQL/MongoDB) for production workloads.

@@ -7,11 +7,12 @@
     "node": ">=18"
   },
   "scripts": {
-    "start": "node server/index.js",
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "start": "npm --prefix backend run start",
+    "start:frontend": "vite preview",
+    "dev": "vite",
     "dev:client": "vite",
-    "dev:server": "node server/index.js",
-    "dev:full": "npm run dev",
+    "dev:server": "npm --prefix backend run dev",
+    "dev:full": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -19,13 +20,6 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
     "@vercel/analytics": "^2.0.1",
-    "bcryptjs": "^3.0.3",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.0",
-    "express": "^5.2.1",
-    "google-auth-library": "^10.6.2",
-    "jsonwebtoken": "^9.0.3",
-    "lowdb": "^7.0.1",
     "lucide-react": "^1.7.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

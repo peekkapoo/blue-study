@@ -1,0 +1,22 @@
+{
+  "name": "blue-study-backend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.0",
+    "express": "^5.2.1",
+    "google-auth-library": "^10.6.2",
+    "jsonwebtoken": "^9.0.3",
+    "lowdb": "^7.0.1"
+  }
+}
