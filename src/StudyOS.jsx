@@ -536,6 +536,30 @@ export default function StudyOS() {
 
   const t = getUIText(lang);
   const workflowNav = useMemo(() => getWorkflowNav(t), [t]);
+  const tutorialSteps = useMemo(() => ([
+    { key: 'welcome', title: t.tutorialStepWelcomeTitle, body: t.tutorialStepWelcomeBody, target: 'tutorial-button' },
+    { key: 'nav-today', title: t.tutorialStepNavTodayTitle, body: t.tutorialStepNavTodayBody, target: 'nav-today', view: 'today' },
+    { key: 'today-dashboard', title: t.tutorialStepTodayDashboardTitle, body: t.tutorialStepTodayDashboardBody, target: 'today-dashboard', view: 'today' },
+    { key: 'today-decision', title: t.tutorialStepTodayDecisionTitle, body: t.tutorialStepTodayDecisionBody, target: 'today-decision', view: 'today' },
+    { key: 'today-rhythm', title: t.tutorialStepTodayRhythmTitle, body: t.tutorialStepTodayRhythmBody, target: 'today-rhythm', view: 'today' },
+    { key: 'today-risk', title: t.tutorialStepTodayRiskTitle, body: t.tutorialStepTodayRiskBody, target: 'today-risk', view: 'today' },
+    { key: 'nav-plan', title: t.tutorialStepNavPlanTitle, body: t.tutorialStepNavPlanBody, target: 'nav-plan', view: 'plan' },
+    { key: 'task-engine', title: t.tutorialStepTaskEngineTitle, body: t.tutorialStepTaskEngineBody, target: 'task-engine', view: 'plan' },
+    { key: 'task-views', title: t.tutorialStepTaskViewsTitle, body: t.tutorialStepTaskViewsBody, target: 'task-views', view: 'plan' },
+    { key: 'task-quick-add', title: t.tutorialStepTaskQuickAddTitle, body: t.tutorialStepTaskQuickAddBody, target: 'task-add', view: 'plan' },
+    { key: 'task-filters', title: t.tutorialStepTaskFiltersTitle, body: t.tutorialStepTaskFiltersBody, target: 'task-filters', view: 'plan' },
+    { key: 'task-bulk', title: t.tutorialStepTaskBulkTitle, body: t.tutorialStepTaskBulkBody, target: 'task-bulk', view: 'plan' },
+    { key: 'task-list', title: t.tutorialStepTaskListTitle, body: t.tutorialStepTaskListBody, target: 'task-list', view: 'plan' },
+    { key: 'nav-learn', title: t.tutorialStepNavLearnTitle, body: t.tutorialStepNavLearnBody, target: 'nav-learn', view: 'learn' },
+    { key: 'learn-pomodoro', title: t.tutorialStepPomodoroTitle, body: t.tutorialStepPomodoroBody, target: 'learn-pomodoro', view: 'learn' },
+    { key: 'learn-pomodoro-settings', title: t.tutorialStepPomodoroSettingsTitle, body: t.tutorialStepPomodoroSettingsBody, target: 'learn-pomodoro-settings', view: 'learn' },
+    { key: 'learn-sessions', title: t.tutorialStepStudySessionsTitle, body: t.tutorialStepStudySessionsBody, target: 'learn-sessions', view: 'learn' },
+    { key: 'learn-goals', title: t.tutorialStepGoalsTitle, body: t.tutorialStepGoalsBody, target: 'learn-goals', view: 'learn' },
+    { key: 'learn-progress', title: t.tutorialStepProgressTitle, body: t.tutorialStepProgressBody, target: 'learn-progress', view: 'learn' },
+    { key: 'nav-library', title: t.tutorialStepNavLibraryTitle, body: t.tutorialStepNavLibraryBody, target: 'nav-library', view: 'library' },
+    { key: 'note-capture', title: t.tutorialStepNoteCaptureTitle, body: t.tutorialStepNoteCaptureBody, target: 'note-save', view: 'library' },
+    { key: 'ai', title: t.tutorialStepAiTitle, body: t.tutorialStepAiBody, target: 'ai-toggle' },
+  ]), [t]);
   const priorityLabel = useCallback(
     (priority) => t[PRIORITY_META[priority]?.labelKey] || t.priorityMedium,
     [t],
@@ -649,6 +673,10 @@ export default function StudyOS() {
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState([{ role: 'ai', content: t.aiWelcome }]);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const [tutorialRect, setTutorialRect] = useState(null);
+  const [tutorialTooltip, setTutorialTooltip] = useState({ top: 0, left: 0, placement: 'bottom' });
 
   const chatEndRef = useRef(null);
   const userDataLoadedRef = useRef(false);
@@ -1869,6 +1897,17 @@ Return plain JSON only:
   const pomodoroProgress = pomodoroTotalSeconds
     ? Math.min(100, Math.max(0, Math.round(((pomodoroTotalSeconds - pomodoroSecondsLeft) / pomodoroTotalSeconds) * 100)))
     : 0;
+  const tutorialProgress = tutorialSteps.length
+    ? Math.round(((tutorialStep + 1) / tutorialSteps.length) * 100)
+    : 0;
+  const tutorialStepData = tutorialSteps[tutorialStep] || tutorialSteps[0] || { title: '', body: '' };
+  const tutorialTooltipStyle = tutorialRect
+    ? {
+      top: tutorialTooltip.top,
+      left: tutorialTooltip.left,
+      transform: tutorialTooltip.placement === 'bottom' ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
+    }
+    : { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
   const pomodoroTodayFocusMinutes = pomodoroFocusStats.dateKey === todayKey ? pomodoroFocusStats.focusMinutes : 0;
   const completedInCurrentCycle = pomodoroCompleted % pomodoroConfig.cyclesBeforeLongBreak;
   const pomodoroUntilLongBreak = completedInCurrentCycle === 0
@@ -1876,8 +1915,101 @@ Return plain JSON only:
     : pomodoroConfig.cyclesBeforeLongBreak - completedInCurrentCycle;
 
   const toggleTheme = () => setTheme((prev) => prev === 'dark' ? 'light' : 'dark');
+  const openTutorial = () => {
+    setTutorialStep(0);
+    setTutorialRect(null);
+    setTutorialOpen(true);
+  };
+  const closeTutorial = () => {
+    setTutorialOpen(false);
+    setTutorialRect(null);
+  };
+  const nextTutorialStep = () => {
+    if (!tutorialSteps.length || tutorialStep >= tutorialSteps.length - 1) {
+      setTutorialOpen(false);
+      return;
+    }
+    setTutorialStep((prev) => Math.min(prev + 1, tutorialSteps.length - 1));
+  };
+  const prevTutorialStep = () => setTutorialStep((prev) => Math.max(prev - 1, 0));
   const hasAuthSession = Boolean(authUser) && (Boolean(authToken) || DEV_AUTH_BYPASS_ENABLED);
   const isLocalDevMode = hasAuthSession && !authToken;
+
+  useEffect(() => {
+    if (!tutorialOpen) return undefined;
+    const step = tutorialSteps[tutorialStep];
+    if (step?.view && step.view !== view) {
+      setView(step.view);
+    }
+    return undefined;
+  }, [tutorialOpen, tutorialStep, tutorialSteps, view]);
+
+  useEffect(() => {
+    if (!tutorialOpen) return undefined;
+    const step = tutorialSteps[tutorialStep];
+    if (!step?.target) return undefined;
+    const timer = setTimeout(() => {
+      const el = document.querySelector(`[data-tutorial="${step.target}"]`);
+      if (el?.scrollIntoView) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      }
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [tutorialOpen, tutorialStep, tutorialSteps, view]);
+
+  useEffect(() => {
+    if (!tutorialOpen) return undefined;
+    let frame = 0;
+    const step = tutorialSteps[tutorialStep];
+    const selector = step?.target ? `[data-tutorial="${step.target}"]` : null;
+
+    const update = () => {
+      if (!selector) {
+        setTutorialRect(null);
+        return;
+      }
+      const el = document.querySelector(selector);
+      if (!el) {
+        setTutorialRect(null);
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      const padding = 6;
+      setTutorialRect({
+        top: rect.top - padding,
+        left: rect.left - padding,
+        width: rect.width + padding * 2,
+        height: rect.height + padding * 2,
+      });
+
+      const viewportW = window.innerWidth || 0;
+      const viewportH = window.innerHeight || 0;
+      const tooltipWidth = 320;
+      const tooltipHeight = 180;
+      const centerX = rect.left + rect.width / 2;
+      const canPlaceBottom = rect.bottom + tooltipHeight + 20 < viewportH;
+      const placement = canPlaceBottom ? 'bottom' : 'top';
+      const top = placement === 'bottom' ? rect.bottom + 16 : rect.top - 16;
+      const minLeft = 16 + tooltipWidth / 2;
+      const maxLeft = Math.max(minLeft, viewportW - 16 - tooltipWidth / 2);
+      const left = Math.min(Math.max(centerX, minLeft), maxLeft);
+      setTutorialTooltip({ top, left, placement });
+    };
+
+    const schedule = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    };
+
+    update();
+    window.addEventListener('resize', schedule);
+    window.addEventListener('scroll', schedule, true);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener('resize', schedule);
+      window.removeEventListener('scroll', schedule, true);
+    };
+  }, [tutorialOpen, tutorialStep, tutorialSteps, view]);
 
   useEffect(() => {
     if (!authReady) return undefined;
@@ -1982,6 +2114,7 @@ Return plain JSON only:
             return (
               <button
                 key={item.id}
+                data-tutorial={`nav-${item.id}`}
                 onClick={() => setView(item.id)}
                 title={item.label}
                 className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all duration-200 group relative ${view === item.id ? 'nav-active text-white' : 'text-slate-400 hover:bg-white/10 hover:text-sky-300'}`}
@@ -2042,6 +2175,10 @@ Return plain JSON only:
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap lg:justify-end">
+              <button onClick={openTutorial} data-tutorial="tutorial-button" className="px-3 py-2 glass rounded-xl text-xs font-semibold inline-flex items-center gap-1.5">
+                <GraduationCap size={14} className="text-sky-500" />
+                {t.tutorialLabel}
+              </button>
               <button onClick={toggleTheme} aria-label={t.theme} className="px-3 py-2 glass rounded-xl text-xs font-semibold inline-flex items-center gap-1.5">
                 {theme === 'dark' ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-indigo-500" />}
                 {t.theme}: {theme === 'dark' ? t.dark : t.light}
@@ -2246,7 +2383,7 @@ Return plain JSON only:
 
         {view === 'today' && (
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 anim-tab">
-            <div className="xl:col-span-2 rounded-3xl p-7 md:p-9 text-white relative overflow-hidden shadow-2xl shadow-blue-950/25" style={{ background: 'linear-gradient(145deg, #0A1628 0%, #0F2A5F 60%, #0F3D7A 100%)' }}>
+            <div data-tutorial="today-dashboard" className="xl:col-span-2 rounded-3xl p-7 md:p-9 text-white relative overflow-hidden shadow-2xl shadow-blue-950/25" style={{ background: 'linear-gradient(145deg, #0A1628 0%, #0F2A5F 60%, #0F3D7A 100%)' }}>
               <div className="relative z-10">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse block" />
@@ -2269,7 +2406,7 @@ Return plain JSON only:
               <div className="absolute right-12 -bottom-10 w-40 h-40 rounded-full opacity-15" style={{ background: 'radial-gradient(circle, #06B6D4, transparent)' }} />
             </div>
 
-            <div className="glass rounded-3xl p-5 space-y-3 shadow-sm">
+            <div data-tutorial="today-decision" className="glass rounded-3xl p-5 space-y-3 shadow-sm">
               <h3 className="syne font-bold text-[#0A1628]">{t.reflectDecisionTitle}</h3>
               <div className="rounded-xl border border-sky-100 p-3">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-sky-600">{t.reflectWhatFirst}</p>
@@ -2289,7 +2426,7 @@ Return plain JSON only:
               </div>
             </div>
 
-            <div className="xl:col-span-2 glass rounded-3xl p-6 shadow-sm">
+            <div data-tutorial="today-rhythm" className="xl:col-span-2 glass rounded-3xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="syne font-bold text-[#0A1628]">{t.reflectRhythmTitle}</h3>
                 <TrendingUp size={16} className="text-sky-500" />
@@ -2315,7 +2452,7 @@ Return plain JSON only:
               </div>
             </div>
 
-            <div className="glass rounded-3xl p-6 shadow-sm space-y-3">
+            <div data-tutorial="today-risk" className="glass rounded-3xl p-6 shadow-sm space-y-3">
               <h3 className="syne font-bold text-[#0A1628]">{t.reflectRiskRadar}</h3>
               <div className="rounded-xl border border-sky-100 p-3">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t.reflectNeedsReview}</p>
@@ -2426,7 +2563,7 @@ Return plain JSON only:
             </div>
 
             <div className="xl:col-span-2 space-y-5">
-              <div className="glass rounded-3xl p-5 shadow-sm">
+              <div data-tutorial="task-engine" className="glass rounded-3xl p-5 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                   <div className="flex items-center gap-2">
                     <h3 className="syne font-bold text-[#0A1628]">{t.taskEngineTitle}</h3>
@@ -2436,6 +2573,7 @@ Return plain JSON only:
                   </div>
                   <button
                     type="button"
+                    data-tutorial="task-bulk"
                     onClick={toggleBulkSelectMode}
                     className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${bulkSelectMode ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
                   >
@@ -2523,12 +2661,12 @@ Return plain JSON only:
                     </div>
                   )}
 
-                  <button type="submit" className="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>
+                  <button type="submit" data-tutorial="task-add" className="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>
                     <Plus size={14} className="inline mr-1" /> {t.addTask}
                   </button>
                 </form>
 
-                <div className="rounded-2xl bg-slate-100/70 p-1 grid grid-cols-2 gap-2 mb-3">
+                <div data-tutorial="task-views" className="rounded-2xl bg-slate-100/70 p-1 grid grid-cols-2 gap-2 mb-3">
                   {[
                     { id: 'today', label: t.today },
                     { id: 'week', label: t.thisWeek },
@@ -2551,6 +2689,7 @@ Return plain JSON only:
                     />
                     <button
                       type="button"
+                      data-tutorial="task-filters"
                       onClick={() => setTaskFiltersOpen((prev) => !prev)}
                       aria-pressed={taskFiltersOpen}
                       className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-semibold border transition ${taskFiltersOpen ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
@@ -2610,7 +2749,7 @@ Return plain JSON only:
                   </div>
                 )}
 
-                <div className="max-h-[520px] overflow-y-auto scroll space-y-2">
+                <div data-tutorial="task-list" className="max-h-[520px] overflow-y-auto scroll space-y-2">
                   {Object.entries(tasksBySubject).map(([subject, subjectTasks]) => (
                     <div key={subject} className="rounded-xl border border-sky-100/70 p-2.5">
                       <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">{categoryLabel(subject)}</p>
@@ -2721,7 +2860,7 @@ Return plain JSON only:
         {view === 'learn' && (
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 anim-tab">
             <div className="xl:col-span-2 space-y-5">
-              <div className="glass rounded-3xl p-6 md:p-8 shadow-sm">
+              <div data-tutorial="learn-pomodoro" className="glass rounded-3xl p-6 md:p-8 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
                   <div>
                     <h2 className="syne text-2xl font-bold text-[#0A1628]">{t.pomodoroTitle}</h2>
@@ -2760,7 +2899,7 @@ Return plain JSON only:
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-5">
-                    <button onClick={togglePomodoro} className="px-3 py-2.5 rounded-xl text-xs font-bold text-white inline-flex items-center justify-center gap-1.5" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>
+                    <button onClick={togglePomodoro} data-tutorial="pomodoro-start" className="px-3 py-2.5 rounded-xl text-xs font-bold text-white inline-flex items-center justify-center gap-1.5" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>
                       {pomodoroRunning ? <Pause size={12} /> : <Play size={12} />}
                       {pomodoroRunning ? t.pomodoroPause : t.pomodoroStart}
                     </button>
@@ -2787,7 +2926,7 @@ Return plain JSON only:
                 </div>
               </div>
 
-              <div className="glass rounded-3xl p-6 shadow-sm">
+              <div data-tutorial="learn-sessions" className="glass rounded-3xl p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="syne text-xl font-bold text-[#0A1628]">{t.studySessionsTitle}</h2>
                   <BookMarked size={18} className="text-sky-500" />
@@ -2828,7 +2967,7 @@ Return plain JSON only:
             </div>
 
             <div className="space-y-5">
-              <div className="glass rounded-3xl p-5 shadow-sm">
+              <div data-tutorial="learn-pomodoro-settings" className="glass rounded-3xl p-5 shadow-sm">
                 <p className="text-[11px] uppercase tracking-wider font-bold text-slate-500 mb-3 inline-flex items-center gap-1.5">
                   <SlidersHorizontal size={12} />
                   {t.pomodoroSettings}
@@ -2927,7 +3066,7 @@ Return plain JSON only:
                 )}
               </div>
 
-              <div className="glass rounded-3xl p-5 shadow-sm">
+              <div data-tutorial="learn-goals" className="glass rounded-3xl p-5 shadow-sm">
                 <h3 className="syne font-bold text-[#0A1628] mb-3">{t.goalsTitle}</h3>
                 <form onSubmit={addGoal} className="space-y-2 mb-3">
                   <input value={newGoal.title} onChange={(e) => setNewGoal((prev) => ({ ...prev, title: e.target.value }))} placeholder={t.goalTitlePlaceholder} className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
@@ -2952,7 +3091,7 @@ Return plain JSON only:
                 </div>
               </div>
 
-              <div className="glass rounded-3xl p-5 shadow-sm">
+              <div data-tutorial="learn-progress" className="glass rounded-3xl p-5 shadow-sm">
                 <h3 className="syne font-bold text-[#0A1628] mb-3">{t.progressBySubjectTitle}</h3>
                 <div className="space-y-2">
                   {subjectProgress.map((item) => (
@@ -3040,7 +3179,7 @@ Return plain JSON only:
                   <input value={newNote.tagsInput} onChange={(e) => setNewNote((prev) => ({ ...prev, tagsInput: e.target.value }))} placeholder={t.tagsPlaceholder} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
                 </div>
                 <input value={newNote.attachmentInput} onChange={(e) => setNewNote((prev) => ({ ...prev, attachmentInput: e.target.value }))} placeholder={t.attachmentPlaceholder} className="w-full px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs mb-2" />
-                <button onClick={addNote} disabled={!newNote.title.trim()} className="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40" style={{ background: 'linear-gradient(135deg, #0A1628, #0F2A5F)' }}>
+                <button onClick={addNote} data-tutorial="note-save" disabled={!newNote.title.trim()} className="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40" style={{ background: 'linear-gradient(135deg, #0A1628, #0F2A5F)' }}>
                   {t.saveNote}
                 </button>
               </div>
@@ -3250,6 +3389,71 @@ Return plain JSON only:
         </footer>
       </main>
 
+      {tutorialOpen && (
+        <div className="fixed inset-0 z-[140]">
+          <div
+            className={`absolute inset-0 ${tutorialRect ? 'bg-transparent' : 'bg-slate-900/50'}`}
+            onClick={closeTutorial}
+          />
+          {tutorialRect && (
+            <div
+              className="absolute rounded-2xl border border-sky-200/80 shadow-[0_0_0_9999px_rgba(15,23,42,0.58)] pointer-events-none transition-all duration-200"
+              style={{
+                top: tutorialRect.top,
+                left: tutorialRect.left,
+                width: tutorialRect.width,
+                height: tutorialRect.height,
+              }}
+            />
+          )}
+          <div
+            className="absolute z-10 w-[320px] max-w-[90vw] rounded-2xl bg-white border border-sky-100 shadow-2xl p-4"
+            style={tutorialTooltipStyle}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold text-sky-500 uppercase tracking-[2.5px]">{t.tutorialLabel}</p>
+                <h3 className="syne text-base text-[#0A1628]">{tutorialStepData.title}</h3>
+              </div>
+              <button type="button" onClick={closeTutorial} className="p-1.5 rounded-lg hover:bg-slate-100">
+                <X size={14} />
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-600 mt-2 leading-relaxed">{tutorialStepData.body}</p>
+
+            <div className="mt-3 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+              <div className="h-full bg-sky-500 transition-all duration-300" style={{ width: `${tutorialProgress}%` }} />
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+              <span>{t.tutorialStepLabel} {tutorialStep + 1} / {tutorialSteps.length}</span>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={closeTutorial} className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">
+                  {t.tutorialSkip}
+                </button>
+                <button
+                  type="button"
+                  onClick={prevTutorialStep}
+                  disabled={tutorialStep === 0}
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 disabled:opacity-50"
+                >
+                  {t.tutorialBack}
+                </button>
+                <button
+                  type="button"
+                  onClick={nextTutorialStep}
+                  className="px-2.5 py-1 rounded-lg text-white"
+                  style={{ background: 'linear-gradient(135deg, #0EA5E9 0%, #1D4ED8 100%)' }}
+                >
+                  {tutorialStep >= tutorialSteps.length - 1 ? t.tutorialDone : t.tutorialNext}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {undoState && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[120]">
           <div className="px-4 py-2 rounded-xl bg-[#0A1628] text-white text-sm shadow-xl border border-white/10 flex items-center gap-2">
@@ -3311,7 +3515,7 @@ Return plain JSON only:
           </div>
         </div>
 
-        <button onClick={() => setAiOpen(!aiOpen)} className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center text-white shadow-2xl transition-all duration-300 ${aiOpen ? 'rotate-12 scale-95' : 'hover:scale-110'}`} style={aiOpen ? { background: '#1E293B' } : { background: 'linear-gradient(135deg, #38BDF8 0%, #1D4ED8 100%)', boxShadow: '0 8px 30px #0EA5E970' }}>
+        <button onClick={() => setAiOpen(!aiOpen)} data-tutorial="ai-toggle" className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center text-white shadow-2xl transition-all duration-300 ${aiOpen ? 'rotate-12 scale-95' : 'hover:scale-110'}`} style={aiOpen ? { background: '#1E293B' } : { background: 'linear-gradient(135deg, #38BDF8 0%, #1D4ED8 100%)', boxShadow: '0 8px 30px #0EA5E970' }}>
           {aiOpen ? <X size={22} /> : <Sparkles size={22} strokeWidth={2} />}
           {!aiOpen && <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white animate-pulse" />}
         </button>
