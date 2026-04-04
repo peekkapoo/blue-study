@@ -596,13 +596,16 @@ export default function StudyOS() {
   });
 
   const [taskFilters, setTaskFilters] = useState({
-    status: 'open',
+    status: 'all',
     priority: 'all',
     subject: 'all',
     overdueOnly: false,
     sort: 'dueAsc',
     query: '',
   });
+
+  const [taskDetailsOpen, setTaskDetailsOpen] = useState(false);
+  const [taskFiltersOpen, setTaskFiltersOpen] = useState(false);
 
   const [noteFilters, setNoteFilters] = useState({
     category: 'all',
@@ -1716,6 +1719,17 @@ export default function StudyOS() {
     return grouped;
   }, [baseVisibleTasks]);
 
+  const taskFilterCount = useMemo(() => {
+    let count = 0;
+    if (taskFilters.status !== 'all') count += 1;
+    if (taskFilters.priority !== 'all') count += 1;
+    if (taskFilters.subject !== 'all') count += 1;
+    if (taskFilters.sort !== 'dueAsc') count += 1;
+    if (taskFilters.overdueOnly) count += 1;
+    if (taskFilters.query.trim()) count += 1;
+    return count;
+  }, [taskFilters]);
+
   const allTags = useMemo(() => {
     const set = new Set();
     notes.forEach((note) => (note.tags || []).forEach((tag) => set.add(tag)));
@@ -2413,91 +2427,176 @@ Return plain JSON only:
 
             <div className="xl:col-span-2 space-y-5">
               <div className="glass rounded-3xl p-5 shadow-sm">
-                <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <h3 className="syne font-bold text-[#0A1628]">{t.taskEngineTitle}</h3>
-                  <span className="text-[10px] font-bold bg-sky-100 text-sky-600 px-2 py-1 rounded-full">
-                    {baseVisibleTasks.length} {t.visibleLabel}
-                  </span>
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-2">
+                    <h3 className="syne font-bold text-[#0A1628]">{t.taskEngineTitle}</h3>
+                    <span className="text-[10px] font-bold bg-sky-100 text-sky-600 px-2 py-1 rounded-full">
+                      {baseVisibleTasks.length} {t.visibleLabel}
+                    </span>
+                  </div>
                   <button
                     type="button"
                     onClick={toggleBulkSelectMode}
-                    className={`text-[10px] font-bold px-2 py-1 rounded-full ${bulkSelectMode ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+                    className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${bulkSelectMode ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
                   >
                     {bulkSelectMode ? t.bulkCancel : t.bulkSelect}
                   </button>
                 </div>
 
-                <form onSubmit={addTask} className="space-y-2 mb-4">
-                  <input value={newTask.title} onChange={(e) => setNewTask((prev) => ({ ...prev, title: e.target.value }))} placeholder={t.taskAddPlaceholder} className="w-full px-3 py-2.5 bg-sky-50/60 border border-sky-100 rounded-xl text-sm focus:outline-none" />
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="time" value={newTask.time} onChange={(e) => setNewTask((prev) => ({ ...prev, time: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs" />
-                    <input type="date" value={newTask.dueDateKey} onChange={(e) => setNewTask((prev) => ({ ...prev, dueDateKey: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs" />
-                    <select value={newTask.priority} onChange={(e) => setNewTask((prev) => ({ ...prev, priority: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs">
-                      <option value="low">{t.priorityLow}</option>
-                      <option value="medium">{t.priorityMedium}</option>
-                      <option value="high">{t.priorityHigh}</option>
-                    </select>
-                    <select value={newTask.recurring} onChange={(e) => setNewTask((prev) => ({ ...prev, recurring: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs">
-                      <option value="none">{t.recurrenceNone}</option>
-                      <option value="daily">{t.recurrenceDaily}</option>
-                      <option value="weekly">{t.recurrenceWeekly}</option>
-                      <option value="monthly">{t.recurrenceMonthly}</option>
-                    </select>
-                    <select value={newTask.subject} onChange={(e) => setNewTask((prev) => ({ ...prev, subject: e.target.value }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs">
-                      {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
-                    </select>
-                    <input type="number" min="15" step="15" value={newTask.duration} onChange={(e) => setNewTask((prev) => ({ ...prev, duration: Number(e.target.value || 15) }))} className="px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs" placeholder={t.durationPlaceholder} />
+                <form onSubmit={addTask} className="space-y-3 mb-4">
+                  <div className="rounded-2xl border border-sky-100 bg-white/80 p-3 space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-[2px] text-sky-500/80">{t.addTask}</p>
+                    <input
+                      value={newTask.title}
+                      onChange={(e) => setNewTask((prev) => ({ ...prev, title: e.target.value }))}
+                      placeholder={t.taskAddPlaceholder}
+                      className="w-full px-3 py-2.5 bg-slate-50/80 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-sky-400"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-[11px] text-slate-500">
+                        {t.scheduledLabel}
+                        <input
+                          type="time"
+                          value={newTask.time}
+                          onChange={(e) => setNewTask((prev) => ({ ...prev, time: e.target.value }))}
+                          className="mt-1 w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs"
+                        />
+                      </label>
+                      <label className="text-[11px] text-slate-500">
+                        {t.dueLabel}
+                        <input
+                          type="date"
+                          value={newTask.dueDateKey}
+                          onChange={(e) => setNewTask((prev) => ({ ...prev, dueDateKey: e.target.value }))}
+                          className="mt-1 w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs"
+                        />
+                      </label>
+                    </div>
                   </div>
-                  <input type="datetime-local" value={newTask.reminderAt} onChange={(e) => setNewTask((prev) => ({ ...prev, reminderAt: e.target.value }))} className="w-full px-3 py-2 bg-sky-50/60 border border-sky-100 rounded-xl text-xs" />
+
+                  <button
+                    type="button"
+                    onClick={() => setTaskDetailsOpen((prev) => !prev)}
+                    aria-pressed={taskDetailsOpen}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold border transition ${taskDetailsOpen ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
+                  >
+                    <Zap size={12} />
+                    {t.taskOptionsLabel}
+                  </button>
+
+                  {taskDetailsOpen && (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <select value={newTask.priority} onChange={(e) => setNewTask((prev) => ({ ...prev, priority: e.target.value }))} className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs">
+                          <option value="low">{t.priorityLow}</option>
+                          <option value="medium">{t.priorityMedium}</option>
+                          <option value="high">{t.priorityHigh}</option>
+                        </select>
+                        <select value={newTask.recurring} onChange={(e) => setNewTask((prev) => ({ ...prev, recurring: e.target.value }))} className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs">
+                          <option value="none">{t.recurrenceNone}</option>
+                          <option value="daily">{t.recurrenceDaily}</option>
+                          <option value="weekly">{t.recurrenceWeekly}</option>
+                          <option value="monthly">{t.recurrenceMonthly}</option>
+                        </select>
+                        <select value={newTask.subject} onChange={(e) => setNewTask((prev) => ({ ...prev, subject: e.target.value }))} className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs">
+                          {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
+                        </select>
+                        <input
+                          type="number"
+                          min="15"
+                          step="15"
+                          value={newTask.duration}
+                          onChange={(e) => setNewTask((prev) => ({ ...prev, duration: Number(e.target.value || 15) }))}
+                          className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs"
+                          placeholder={t.durationPlaceholder}
+                        />
+                      </div>
+                      <label className="text-[11px] text-slate-500">
+                        {t.reminderLabel}
+                        <input
+                          type="datetime-local"
+                          value={newTask.reminderAt}
+                          onChange={(e) => setNewTask((prev) => ({ ...prev, reminderAt: e.target.value }))}
+                          className="mt-1 w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs"
+                        />
+                      </label>
+                    </div>
+                  )}
+
                   <button type="submit" className="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>
                     <Plus size={14} className="inline mr-1" /> {t.addTask}
                   </button>
                 </form>
 
-                <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="rounded-2xl bg-slate-100/70 p-1 grid grid-cols-2 gap-2 mb-3">
                   {[
                     { id: 'today', label: t.today },
                     { id: 'week', label: t.thisWeek },
                     { id: 'upcoming', label: t.upcoming },
                     { id: 'day', label: t.selectedDay },
                   ].map((mode) => (
-                    <button key={mode.id} onClick={() => setPlannerMode(mode.id)} className={`px-2 py-1.5 rounded-lg text-xs font-semibold ${plannerMode === mode.id ? 'bg-sky-600 text-white' : 'bg-sky-100 text-sky-700'}`}>
+                    <button key={mode.id} onClick={() => setPlannerMode(mode.id)} className={`px-2 py-1.5 rounded-xl text-xs font-semibold ${plannerMode === mode.id ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`}>
                       {mode.label}
                     </button>
                   ))}
                 </div>
 
-                <div className="space-y-2 mb-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <select value={taskFilters.status} onChange={(e) => setTaskFilters((prev) => ({ ...prev, status: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                      <option value="open">{t.statusOpen}</option>
-                      <option value="done">{t.statusDone}</option>
-                      <option value="all">{t.statusAll}</option>
-                    </select>
-                    <select value={taskFilters.priority} onChange={(e) => setTaskFilters((prev) => ({ ...prev, priority: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                      <option value="all">{t.priorityAll}</option>
-                      <option value="high">{t.priorityHigh}</option>
-                      <option value="medium">{t.priorityMedium}</option>
-                      <option value="low">{t.priorityLow}</option>
-                    </select>
-                    <select value={taskFilters.subject} onChange={(e) => setTaskFilters((prev) => ({ ...prev, subject: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                      <option value="all">{t.subjectAll}</option>
-                      {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
-                    </select>
-                    <select value={taskFilters.sort} onChange={(e) => setTaskFilters((prev) => ({ ...prev, sort: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                      <option value="dueAsc">{t.sortDue}</option>
-                      <option value="priority">{t.sortPriority}</option>
-                      <option value="duration">{t.sortDuration}</option>
-                      <option value="updated">{t.sortUpdated}</option>
-                    </select>
+                <div className="rounded-2xl border border-slate-200 bg-white/70 p-3 space-y-2 mb-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      value={taskFilters.query}
+                      onChange={(e) => setTaskFilters((prev) => ({ ...prev, query: e.target.value }))}
+                      placeholder={t.searchTaskPlaceholder}
+                      className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setTaskFiltersOpen((prev) => !prev)}
+                      aria-pressed={taskFiltersOpen}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-semibold border transition ${taskFiltersOpen ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
+                    >
+                      <SlidersHorizontal size={12} />
+                      {t.taskFiltersLabel}
+                      {taskFilterCount > 0 && (
+                        <span className="ml-1 px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-bold">
+                          {taskFilterCount}
+                        </span>
+                      )}
+                    </button>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <input value={taskFilters.query} onChange={(e) => setTaskFilters((prev) => ({ ...prev, query: e.target.value }))} placeholder={t.searchTaskPlaceholder} className="flex-1 px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs" />
-                    <label className="text-xs inline-flex items-center gap-1.5">
-                      <input type="checkbox" checked={taskFilters.overdueOnly} onChange={(e) => setTaskFilters((prev) => ({ ...prev, overdueOnly: e.target.checked }))} />
-                      {t.overdueOnlyLabel}
-                    </label>
-                  </div>
+                  <label className="text-[11px] inline-flex items-center gap-1.5 text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={taskFilters.overdueOnly}
+                      onChange={(e) => setTaskFilters((prev) => ({ ...prev, overdueOnly: e.target.checked }))}
+                    />
+                    {t.overdueOnlyLabel}
+                  </label>
+                  {taskFiltersOpen && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <select value={taskFilters.status} onChange={(e) => setTaskFilters((prev) => ({ ...prev, status: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                        <option value="open">{t.statusOpen}</option>
+                        <option value="done">{t.statusDone}</option>
+                        <option value="all">{t.statusAll}</option>
+                      </select>
+                      <select value={taskFilters.priority} onChange={(e) => setTaskFilters((prev) => ({ ...prev, priority: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                        <option value="all">{t.priorityAll}</option>
+                        <option value="high">{t.priorityHigh}</option>
+                        <option value="medium">{t.priorityMedium}</option>
+                        <option value="low">{t.priorityLow}</option>
+                      </select>
+                      <select value={taskFilters.subject} onChange={(e) => setTaskFilters((prev) => ({ ...prev, subject: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                        <option value="all">{t.subjectAll}</option>
+                        {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
+                      </select>
+                      <select value={taskFilters.sort} onChange={(e) => setTaskFilters((prev) => ({ ...prev, sort: e.target.value }))} className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                        <option value="dueAsc">{t.sortDue}</option>
+                        <option value="priority">{t.sortPriority}</option>
+                        <option value="duration">{t.sortDuration}</option>
+                        <option value="updated">{t.sortUpdated}</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 {bulkSelectMode && selectedTaskIds.length > 0 && (
