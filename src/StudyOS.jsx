@@ -36,11 +36,8 @@ import {
   GraduationCap,
   BookMarked,
   ClipboardList,
-  Facebook,
-  Instagram,
-  Linkedin,
-  Github,
 } from 'lucide-react';
+import { FaFacebookF, FaInstagram, FaLinkedinIn, FaGithub } from 'react-icons/fa';
 import {
   LANG_META,
   DEFAULT_LANG,
@@ -155,10 +152,10 @@ const STYLES = `
 `;
 
 const FOOTER_LINKS = [
-  { label: 'Facebook', href: 'https://www.facebook.com/trungnguyen191105', icon: Facebook, iconClass: 'text-[#1877F2]' },
-  { label: 'Instagram', href: 'https://www.instagram.com/peekk_apoo/', icon: Instagram, iconClass: 'text-[#E1306C]' },
-  { label: 'LinkedIn', href: 'https://www.linkedin.com/in/ngtrung05/', icon: Linkedin, iconClass: 'text-[#0A66C2]' },
-  { label: 'GitHub', href: 'https://github.com/peekkapoo', icon: Github, iconClass: 'text-slate-700' },
+  { label: 'Facebook', href: 'https://www.facebook.com/trungnguyen191105', icon: FaFacebookF, iconClass: 'text-[#1877F2]' },
+  { label: 'Instagram', href: 'https://www.instagram.com/peekk_apoo/', icon: FaInstagram, iconClass: 'text-[#E1306C]' },
+  { label: 'LinkedIn', href: 'https://www.linkedin.com/in/ngtrung05/', icon: FaLinkedinIn, iconClass: 'text-[#0A66C2]' },
+  { label: 'GitHub', href: 'https://github.com/peekkapoo', icon: FaGithub, iconClass: 'text-slate-700' },
 ];
 
 const AUTH_TOKEN_KEY = 'bs3-auth-token';
@@ -1807,17 +1804,14 @@ Return plain JSON only:
           </div>
 
           <div className="flex flex-col items-end gap-3 w-full lg:w-auto">
-            <div className="w-full lg:w-[280px] rounded-2xl border border-sky-100/80 bg-white/75 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur">
-              <div className="px-4 py-3 flex items-start justify-between gap-3">
-                <div className="flex-1 text-right">
-                  <p className="text-[10px] font-semibold uppercase tracking-[2px] text-sky-500/70">{t.currentTime}</p>
-                  <p className="text-sm font-bold text-slate-700">{currentTimeLabel}</p>
-                </div>
-                <span className="mt-1.5 w-2.5 h-2.5 rounded-full bg-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.6)]" />
+            <div className="flex flex-wrap items-center justify-end gap-3 w-full lg:w-auto">
+              <div className="flex items-center gap-2 rounded-full border border-sky-100/80 bg-white/70 px-3 py-1.5 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-[2px] text-sky-500/70">{t.currentTime}</p>
+                <p className="text-sm font-bold text-slate-700">{currentTimeLabel}</p>
+                <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.6)]" />
               </div>
-              <div className="h-px bg-gradient-to-r from-transparent via-sky-200/70 to-transparent" />
-              <div className="px-4 py-3 flex items-center justify-between gap-3">
-                <p className="text-[12px] font-semibold text-slate-600 truncate">{authUser.name}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-[12px] font-semibold text-slate-600 max-w-[160px] truncate">{authUser.name}</p>
                 <div className="relative">
                   <img src={avatarSrc} alt={t.avatarAlt} className="w-8 h-8 rounded-full border border-sky-200 object-cover" />
                   <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-white" />
