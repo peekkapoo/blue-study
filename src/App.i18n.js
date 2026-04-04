@@ -2186,6 +2186,10 @@ export const SEED_TASK_TEXTS = {
   },
 };
 
-validateLocaleMapSync(SEED_NOTE_TEXTS.ds_algo, 'SEED_NOTE_TEXTS.ds_algo');
-validateLocaleMapSync(SEED_NOTE_TEXTS.ielts_writing, 'SEED_NOTE_TEXTS.ielts_writing');
-validateLocaleMapSync(SEED_TASK_TEXTS, 'SEED_TASK_TEXTS');
+Object.entries(SEED_NOTE_TEXTS).forEach(([seedKey, translations]) => {
+  validateLocaleMapSync(translations, `SEED_NOTE_TEXTS.${seedKey}`);
+});
+
+Object.entries(SEED_TASK_TEXTS).forEach(([seedKey, translations]) => {
+  validateLocaleMapSync(translations, `SEED_TASK_TEXTS.${seedKey}`);
+});
