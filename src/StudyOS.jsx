@@ -1721,7 +1721,6 @@ Return plain JSON only:
         onAuthSuccess={onAuthSuccess}
         canBypassAuth={DEV_AUTH_BYPASS_ENABLED}
         onBypass={activateDevBypass}
-        text={t}
       />
     );
   }
