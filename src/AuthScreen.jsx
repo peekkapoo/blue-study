@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { authApi, IS_API_BASE_CONFIGURED } from './api';
-import { DEFAULT_LANG, getUIText } from './App.i18n';
 
 const AUTH_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
@@ -47,8 +46,11 @@ const boxStyle = {
 const DISPLAY_NAME_TAKEN_MESSAGE = 'Display name is already in use. Please choose another one.';
 const DISPLAY_NAME_DUPLICATED_LOGIN_MESSAGE = 'Display name is duplicated. Use email to sign in.';
 
-export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onBypass = null, text = null }) {
-  const t = text || getUIText(DEFAULT_LANG);
+export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onBypass = null, text }) {
+  const t = text;
+  if (!t) {
+    throw new Error('[i18n] AuthScreen requires localized text from parent.');
+  }
   const [mode, setMode] = useState('login');
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);

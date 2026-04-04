@@ -41,7 +41,6 @@ import { FaFacebookF, FaInstagram, FaLinkedinIn, FaGithub } from 'react-icons/fa
 import {
   LANG_META,
   DEFAULT_LANG,
-  DEFAULT_LOCALE,
   CATEGORY_LABELS,
   getUIText,
   coerceLang,
@@ -561,18 +560,18 @@ export default function StudyOS() {
     { key: 'ai', title: t.tutorialStepAiTitle, body: t.tutorialStepAiBody, target: 'ai-toggle' },
   ]), [t]);
   const priorityLabel = useCallback(
-    (priority) => t[PRIORITY_META[priority]?.labelKey] || t.priorityMedium,
+    (priority) => t[PRIORITY_META[priority]?.labelKey ?? PRIORITY_META.medium.labelKey],
     [t],
   );
   const recurrenceLabel = useCallback(
-    (recurrence) => t[RECURRENCE_LABEL_KEYS[recurrence]] || recurrence,
+    (recurrence) => t[RECURRENCE_LABEL_KEYS[recurrence] ?? RECURRENCE_LABEL_KEYS.none],
     [t],
   );
   const weekDayLabels = useMemo(
-    () => t.weekdaysShort || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    () => t.weekdaysShort,
     [t],
   );
-  const locale = LANG_META[lang]?.locale || DEFAULT_LOCALE;
+  const locale = LANG_META[lang].locale;
   const formatDate = (date, options) => date.toLocaleDateString(locale, options);
   const formatDateFromKey = (dateKey, options) => formatDate(parseDateKey(dateKey), options);
   const formatDateTime = (iso) => {
@@ -581,9 +580,9 @@ export default function StudyOS() {
     if (Number.isNaN(d.getTime())) return '-';
     return d.toLocaleString(locale, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
   };
-  const categoryLabel = useCallback((cat) => (CATEGORY_LABELS[lang]?.[cat] || cat), [lang]);
-  const seedNoteText = useCallback((seedKey) => SEED_NOTE_TEXTS[seedKey]?.[lang] || SEED_NOTE_TEXTS[seedKey]?.en, [lang]);
-  const seedTaskText = useCallback((seedKey) => SEED_TASK_TEXTS[seedKey]?.[lang] || SEED_TASK_TEXTS[seedKey]?.en, [lang]);
+  const categoryLabel = useCallback((cat) => (CATEGORY_LABELS[lang][cat] ?? cat), [lang]);
+  const seedNoteText = useCallback((seedKey) => SEED_NOTE_TEXTS[seedKey]?.[lang], [lang]);
+  const seedTaskText = useCallback((seedKey) => SEED_TASK_TEXTS[seedKey]?.[lang], [lang]);
   const getNoteTitle = useCallback((note) => note.seedKey ? seedNoteText(note.seedKey)?.title || note.title || '' : note.title || '', [seedNoteText]);
   const getNoteContent = useCallback((note) => note.seedKey ? seedNoteText(note.seedKey)?.content || note.content || '' : note.content || '', [seedNoteText]);
   const getTaskTitle = useCallback((task) => task.seedKey ? seedTaskText(task.seedKey) || task.task || '' : task.task || '', [seedTaskText]);
@@ -2077,6 +2076,7 @@ Return plain JSON only:
         onAuthSuccess={onAuthSuccess}
         canBypassAuth={DEV_AUTH_BYPASS_ENABLED}
         onBypass={activateDevBypass}
+        text={t}
       />
     );
   }

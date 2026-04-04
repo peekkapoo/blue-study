@@ -1,6 +1,7 @@
 export const LANG_META = {
   vi: { locale: 'vi-VN', name: 'Tiếng Việt', flag: '🇻🇳' },
   en: { locale: 'en-US', name: 'English', flag: '🇺🇸' },
+  ko: { locale: 'ko-KR', name: '한국어', flag: '🇰🇷' },
   ja: { locale: 'ja-JP', name: '日本語', flag: '🇯🇵' },
   zh: { locale: 'zh-CN', name: '中文', flag: '🇨🇳' },
   de: { locale: 'de-DE', name: 'Deutsch', flag: '🇩🇪' },
@@ -13,6 +14,7 @@ export const DEFAULT_LOCALE = 'en-US';
 export const CATEGORY_LABELS = {
   vi: { general: 'Chung', tech: 'Công nghệ', language: 'Ngoại ngữ', skill: 'Kỹ năng' },
   en: { general: 'General', tech: 'Technology', language: 'Language', skill: 'Skills' },
+  ko: { general: '일반', tech: '기술', language: '언어', skill: '역량' },
   ja: { general: '一般', tech: 'テクノロジー', language: '言語', skill: 'スキル' },
   zh: { general: '通用', tech: '科技', language: '语言', skill: '技能' },
   de: { general: 'Allgemein', tech: 'Technologie', language: 'Sprachen', skill: 'Fähigkeiten' },
@@ -2018,14 +2020,87 @@ export const UI_TEXT = {
   },
 };
 
+// Korean is initialized from the English keyset so strict key parity is guaranteed.
+UI_TEXT.ko = {
+  ...UI_TEXT.en,
+  language: '언어',
+  aiReplyLang: '한국어',
+  authBrand: 'Blue Study',
+  authHeadline: '안전한 계정으로 더 스마트하게 학습하세요',
+  authSubhead: '계정을 만들어 노트, 학습 일정, 설정을 저장하세요. 데이터는 사용자별로 동기화됩니다.',
+  authSignIn: '로그인',
+  authCreateAccount: '회원가입',
+  authDisplayName: '표시 이름',
+  authUsernameOrEmail: '표시 이름 또는 이메일',
+  authEmail: '이메일',
+  authPasswordHint: '비밀번호 (최소 6자)',
+  authProcessing: '처리 중...',
+  authContinueLocal: '로컬 모드로 계속 (개발)',
+  navToday: '오늘',
+  navPlan: '계획',
+  navLearn: '학습',
+  navLibrary: '라이브러리',
+  profileTitle: '프로필',
+  profileSubtitle: '개인 정보와 아바타를 업데이트하세요.',
+  profileEdit: '프로필 편집',
+  profileNameLabel: '표시 이름',
+  profileEmailLabel: '이메일',
+  profileSaved: '프로필이 업데이트되었습니다.',
+  profileSavedLocal: '로컬에 저장되었습니다.',
+  logout: '로그아웃',
+};
+
+const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const collectLeafPaths = (value, prefix = '') => {
+  if (!isPlainObject(value)) return [prefix];
+  const paths = [];
+  Object.keys(value).forEach((key) => {
+    const nextPrefix = prefix ? `${prefix}.${key}` : key;
+    if (isPlainObject(value[key])) {
+      paths.push(...collectLeafPaths(value[key], nextPrefix));
+    } else {
+      paths.push(nextPrefix);
+    }
+  });
+  return paths;
+};
+
+const findMissingPaths = (baseObject, targetObject) => {
+  const basePaths = collectLeafPaths(baseObject).filter(Boolean);
+  const targetPaths = new Set(collectLeafPaths(targetObject).filter(Boolean));
+  return basePaths.filter((path) => !targetPaths.has(path));
+};
+
+const validateLocaleMapSync = (map, mapName) => {
+  const localeCodes = Object.keys(LANG_META);
+  const missingLocales = localeCodes.filter((code) => !Object.prototype.hasOwnProperty.call(map, code));
+  if (missingLocales.length) {
+    throw new Error(`[i18n] ${mapName} missing locales: ${missingLocales.join(', ')}`);
+  }
+
+  const base = map[DEFAULT_LANG];
+  const parityErrors = [];
+  localeCodes.forEach((code) => {
+    const missingPaths = findMissingPaths(base, map[code]);
+    if (missingPaths.length) {
+      parityErrors.push(`${code}: ${missingPaths.slice(0, 8).join(', ')}${missingPaths.length > 8 ? ` (+${missingPaths.length - 8} more)` : ''}`);
+    }
+  });
+
+  if (parityErrors.length) {
+    throw new Error(`[i18n] ${mapName} key mismatch. ${parityErrors.join(' | ')}`);
+  }
+};
+
+validateLocaleMapSync(CATEGORY_LABELS, 'CATEGORY_LABELS');
+validateLocaleMapSync(UI_TEXT, 'UI_TEXT');
+
 export const coerceLang = (lang) => (LANG_META[lang] ? lang : DEFAULT_LANG);
 
 export const getUIText = (lang) => {
   const safeLang = coerceLang(lang);
-  return {
-    ...UI_TEXT[DEFAULT_LANG],
-    ...(UI_TEXT[safeLang] || {}),
-  };
+  return UI_TEXT[safeLang];
 };
 
 export const CATEGORY_ALIASES = {
@@ -2037,6 +2112,10 @@ export const CATEGORY_ALIASES = {
   Technology: 'tech',
   Language: 'language',
   Skills: 'skill',
+  '일반': 'general',
+  '기술': 'tech',
+  '언어': 'language',
+  '역량': 'skill',
   '一般': 'general',
   'テクノロジー': 'tech',
   '言語': 'language',
@@ -2060,6 +2139,7 @@ export const SEED_NOTE_TEXTS = {
   ds_algo: {
     vi: { title: 'Cấu trúc dữ liệu & Giải thuật', content: 'Ôn tập về Linked List, Tree và ứng dụng trong tối ưu hóa hiệu suất ứng dụng.' },
     en: { title: 'Data Structures & Algorithms', content: 'Review Linked Lists, Trees, and how they are used to optimize app performance.' },
+    ko: { title: '자료구조와 알고리즘', content: 'Linked List, Tree를 복습하고 앱 성능 최적화에서의 활용을 정리한다.' },
     ja: { title: 'データ構造とアルゴリズム', content: '連結リスト、木構造、そしてアプリ性能最適化での使われ方を復習する。' },
     zh: { title: '数据结构与算法', content: '复习链表、树以及它们在应用性能优化中的实际用法。' },
     de: { title: 'Datenstrukturen & Algorithmen', content: 'Wiederholung von Linked Lists, Bäumen und deren Einsatz zur Performance-Optimierung.' },
@@ -2068,6 +2148,7 @@ export const SEED_NOTE_TEXTS = {
   ielts_writing: {
     vi: { title: 'IELTS Writing Task 1', content: 'Tổng hợp từ vựng miêu tả biểu đồ xu hướng (Trend) và so sánh.' },
     en: { title: 'IELTS Writing Task 1', content: 'Vocabulary set for describing trends and comparisons in charts.' },
+    ko: { title: 'IELTS Writing Task 1', content: '차트의 추세와 비교를 설명할 때 쓰는 핵심 어휘를 정리한다.' },
     ja: { title: 'IELTS Writing Task 1', content: 'グラフの傾向や比較を説明する語彙を整理。' },
     zh: { title: '雅思写作 Task 1', content: '整理用于描述趋势图与对比图的词汇。' },
     de: { title: 'IELTS Writing Task 1', content: 'Wortschatz zum Beschreiben von Trends und Vergleichen in Diagrammen.' },
@@ -2079,6 +2160,7 @@ export const SEED_TASK_TEXTS = {
   calc_homework: {
     vi: 'Làm bài tập giải tích',
     en: 'Do calculus homework',
+    ko: '미적분 과제 하기',
     ja: '微積分の宿題をする',
     zh: '完成微积分作业',
     de: 'Analysis-Hausaufgaben erledigen',
@@ -2087,6 +2169,7 @@ export const SEED_TASK_TEXTS = {
   react_hooks: {
     vi: 'Đọc tài liệu React Hooks',
     en: 'Read React Hooks docs',
+    ko: 'React Hooks 문서 읽기',
     ja: 'React Hooks のドキュメントを読む',
     zh: '阅读 React Hooks 文档',
     de: 'React-Hooks-Dokumentation lesen',
@@ -2095,9 +2178,14 @@ export const SEED_TASK_TEXTS = {
   code_review: {
     vi: 'Tham gia Review Code',
     en: 'Join code review session',
+    ko: '코드 리뷰 세션 참여',
     ja: 'コードレビューに参加する',
     zh: '参加代码评审',
     de: 'An Code-Review teilnehmen',
     it: 'Partecipare alla code review',
   },
 };
+
+validateLocaleMapSync(SEED_NOTE_TEXTS.ds_algo, 'SEED_NOTE_TEXTS.ds_algo');
+validateLocaleMapSync(SEED_NOTE_TEXTS.ielts_writing, 'SEED_NOTE_TEXTS.ielts_writing');
+validateLocaleMapSync(SEED_TASK_TEXTS, 'SEED_TASK_TEXTS');
