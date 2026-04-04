@@ -2077,6 +2077,10 @@ Return plain JSON only:
         canBypassAuth={DEV_AUTH_BYPASS_ENABLED}
         onBypass={activateDevBypass}
         text={t}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        lang={lang}
+        onLangChange={(nextLang) => setLang(coerceLang(nextLang))}
       />
     );
   }
@@ -2179,9 +2183,21 @@ Return plain JSON only:
                 <GraduationCap size={14} className="text-sky-500" />
                 {t.tutorialLabel}
               </button>
-              <button onClick={toggleTheme} aria-label={t.theme} className="px-3 py-2 glass rounded-xl text-xs font-semibold inline-flex items-center gap-1.5">
-                {theme === 'dark' ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-indigo-500" />}
-                {t.theme}: {theme === 'dark' ? t.dark : t.light}
+              <button
+                onClick={toggleTheme}
+                role="switch"
+                aria-checked={theme === 'dark'}
+                aria-label={`${t.theme}: ${theme === 'dark' ? t.dark : t.light}`}
+                className="glass rounded-full px-2 py-1 text-xs font-semibold inline-flex items-center gap-2"
+              >
+                <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 ${theme === 'dark' ? 'bg-sky-500/80' : 'bg-slate-300/80'}`}>
+                  <span className={`absolute left-0.5 top-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm transition-transform duration-300 ${theme === 'dark' ? 'translate-x-5' : 'translate-x-0'}`}>
+                    {theme === 'dark'
+                      ? <Moon size={12} className="text-indigo-600" />
+                      : <Sun size={12} className="text-amber-500" />}
+                  </span>
+                </span>
+                <span>{t.theme}: {theme === 'dark' ? t.dark : t.light}</span>
               </button>
               <Languages size={16} className="text-sky-500" />
               <select value={lang} onChange={(e) => setLang(e.target.value)} aria-label={t.language} className="px-2.5 py-2 glass rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-sky-400/30">
