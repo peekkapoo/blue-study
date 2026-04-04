@@ -19,8 +19,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'Blue Study';
   const options = {
     body: data.body || 'You have a new study reminder.',
-    icon: data.icon || '/favicon.svg',
-    badge: data.badge || '/favicon.svg',
+    icon: data.icon || '/icon-192.png',
+    badge: data.badge || '/badge-72.png',
     data: {
       url: data.url || '/',
     },
