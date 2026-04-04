@@ -44,6 +44,9 @@ const boxStyle = {
   background: 'linear-gradient(150deg, #07162A 0%, #0E2B60 50%, #0B3D85 100%)',
 };
 
+const DISPLAY_NAME_TAKEN_MESSAGE = 'Display name is already in use. Please choose another one.';
+const DISPLAY_NAME_DUPLICATED_LOGIN_MESSAGE = 'Display name is duplicated. Use email to sign in.';
+
 export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onBypass = null, text = null }) {
   const t = text || getUIText(DEFAULT_LANG);
   const [mode, setMode] = useState('login');
@@ -90,17 +93,28 @@ export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onByp
 
     try {
       setLoading(true);
-      const payload = {
-        email: form.email.trim(),
-        password: form.password,
-      };
+      const credential = form.email.trim();
       const data = mode === 'register'
-        ? await authApi.register({ ...payload, name: form.name.trim() })
-        : await authApi.login(payload);
+        ? await authApi.register({
+          name: form.name.trim(),
+          email: credential,
+          password: form.password,
+        })
+        : await authApi.login({
+          identifier: credential,
+          password: form.password,
+        });
 
       await onAuthSuccess(data.token, data.user);
     } catch (err) {
-      setError(err.message || t.authFailed);
+      const message = String(err?.message || '').trim();
+      if (message === DISPLAY_NAME_TAKEN_MESSAGE) {
+        setError(t.authDisplayNameTaken || message);
+      } else if (message === DISPLAY_NAME_DUPLICATED_LOGIN_MESSAGE) {
+        setError(t.authDisplayNameDuplicateLogin || message);
+      } else {
+        setError(message || t.authFailed);
+      }
     } finally {
       setLoading(false);
     }
@@ -197,12 +211,14 @@ export default function AuthScreen({ onAuthSuccess, canBypassAuth = false, onByp
                 </div>
               )}
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-500">{t.authEmail}</label>
+                <label className="text-xs font-semibold text-slate-500">
+                  {mode === 'login' ? (t.authUsernameOrEmail || 'Display name or email') : t.authEmail}
+                </label>
                 <input
-                  type="email"
+                  type={mode === 'login' ? 'text' : 'email'}
                   value={form.email}
                   onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
-                  placeholder={t.authEmail}
+                  placeholder={mode === 'login' ? (t.authUsernameOrEmail || 'Display name or email') : t.authEmail}
                   required
                   className="w-full px-4 py-3 rounded-2xl border border-slate-200/80 bg-white/80 focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-200 transition"
                 />

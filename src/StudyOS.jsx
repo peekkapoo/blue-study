@@ -203,6 +203,8 @@ const DEV_BYPASS_USER = {
   picture: null,
 };
 
+const DISPLAY_NAME_TAKEN_MESSAGE = 'Display name is already in use. Please choose another one.';
+
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 const MAX_AVATAR_INPUT_BYTES = 10 * 1024 * 1024;
 const AVATAR_MAX_DIMENSION = 512;
@@ -894,7 +896,12 @@ export default function StudyOS() {
       localStorage.setItem(AUTH_USER_KEY, JSON.stringify(res.user));
       setProfileSuccess(t.profileSaved);
     } catch (err) {
-      setProfileError(err?.message || t.profileUpdateError);
+      const message = String(err?.message || '').trim();
+      if (message === DISPLAY_NAME_TAKEN_MESSAGE) {
+        setProfileError(t.profileDisplayNameTaken || message);
+      } else {
+        setProfileError(message || t.profileUpdateError);
+      }
     } finally {
       setProfileSaving(false);
     }

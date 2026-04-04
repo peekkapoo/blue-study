@@ -10,9 +10,12 @@ import {
   createUser,
   ensureUserData,
   getStorageWarning,
+  getUserByDisplayName,
   getUserByEmail,
+  getUserByLogin,
   getUserById,
   getUserData,
+  getUsersByDisplayName,
   getPushSubscriptions,
   isSupabaseConfigured,
   removePushSubscription,
@@ -88,6 +91,8 @@ function normalizeUserData(body = {}) {
 
 const MIN_NAME_LENGTH = 2;
 const MAX_NAME_LENGTH = 40;
+const DISPLAY_NAME_TAKEN_MESSAGE = 'Display name is already in use. Please choose another one.';
+const DISPLAY_NAME_DUPLICATED_LOGIN_MESSAGE = 'Display name is duplicated. Use email to sign in.';
 
 async function authRequired(req, res, next) {
   const authHeader = req.headers.authorization || '';
@@ -203,6 +208,11 @@ app.post('/api/auth/register', async (req, res) => {
     return res.status(400).json({ message: 'Missing required fields' });
   }
 
+  const nextName = String(name).trim();
+  if (nextName.length < MIN_NAME_LENGTH || nextName.length > MAX_NAME_LENGTH) {
+    return res.status(400).json({ message: `Name must be between ${MIN_NAME_LENGTH} and ${MAX_NAME_LENGTH} characters` });
+  }
+
   if (String(password).length < 6) {
     return res.status(400).json({ message: 'Password must have at least 6 characters' });
   }
@@ -211,10 +221,13 @@ app.post('/api/auth/register', async (req, res) => {
   const existed = await getUserByEmail(normalizedEmail);
   if (existed) return res.status(409).json({ message: 'Email already registered' });
 
+  const existedDisplayName = await getUserByDisplayName(nextName);
+  if (existedDisplayName) return res.status(409).json({ message: DISPLAY_NAME_TAKEN_MESSAGE });
+
   const passwordHash = await bcrypt.hash(String(password), 10);
   const user = {
     id: randomUUID(),
-    name: String(name).trim(),
+    name: nextName,
     email: normalizedEmail,
     passwordHash,
     provider: 'local',
@@ -232,19 +245,33 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) {
+  const { identifier, email, password } = req.body || {};
+  const loginIdentifier = identifier || email;
+
+  if (!loginIdentifier || !password) {
     return res.status(400).json({ message: 'Missing required fields' });
   }
 
-  const normalizedEmail = String(email).trim().toLowerCase();
-  const user = await getUserByEmail(normalizedEmail);
+  const normalizedIdentifier = String(loginIdentifier).trim().toLowerCase();
+  const isEmailLogin = normalizedIdentifier.includes('@');
+
+  let user;
+  if (isEmailLogin) {
+    user = await getUserByLogin(normalizedIdentifier);
+  } else {
+    const matchedUsers = await getUsersByDisplayName(loginIdentifier);
+    if (matchedUsers.length > 1) {
+      return res.status(409).json({ message: DISPLAY_NAME_DUPLICATED_LOGIN_MESSAGE });
+    }
+    user = matchedUsers[0] || null;
+  }
+
   if (!user || !user.passwordHash) {
-    return res.status(401).json({ message: 'Invalid email or password' });
+    return res.status(401).json({ message: 'Invalid display name/email or password' });
   }
 
   const isValid = await bcrypt.compare(String(password), user.passwordHash);
-  if (!isValid) return res.status(401).json({ message: 'Invalid email or password' });
+  if (!isValid) return res.status(401).json({ message: 'Invalid display name/email or password' });
 
   return res.json({
     token: createToken(user),
@@ -307,6 +334,10 @@ app.patch('/api/auth/profile', authRequired, async (req, res) => {
     const nextName = rawName.trim();
     if (nextName.length < MIN_NAME_LENGTH || nextName.length > MAX_NAME_LENGTH) {
       return res.status(400).json({ message: `Name must be between ${MIN_NAME_LENGTH} and ${MAX_NAME_LENGTH} characters` });
+    }
+    const duplicatedNameUser = await getUserByDisplayName(nextName);
+    if (duplicatedNameUser && duplicatedNameUser.id !== req.user.id) {
+      return res.status(409).json({ message: DISPLAY_NAME_TAKEN_MESSAGE });
     }
     updates.name = nextName;
   }

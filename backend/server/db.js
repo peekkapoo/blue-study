@@ -109,6 +109,28 @@ function toPushTableError(error) {
   return null;
 }
 
+function normalizeLoginIdentifier(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function escapeLikePattern(value) {
+  return String(value).replace(/([\\%_])/g, '\\$1');
+}
+
+function userMatchesLoginIdentifier(user, normalizedIdentifier) {
+  if (!user || !normalizedIdentifier) return false;
+
+  const email = normalizeLoginIdentifier(user.email);
+  const displayName = normalizeLoginIdentifier(user.name);
+
+  return email === normalizedIdentifier || displayName === normalizedIdentifier;
+}
+
+function userMatchesDisplayName(user, normalizedDisplayName) {
+  if (!user || !normalizedDisplayName) return false;
+  return normalizeLoginIdentifier(user.name) === normalizedDisplayName;
+}
+
 function cloneDefaultPayload() {
   return {
     notes: [],
@@ -201,6 +223,53 @@ export async function getUserByEmail(email) {
 
   const db = await getLowdb();
   return db.data.users.find((u) => u.email === email) || null;
+}
+
+export async function getUsersByDisplayName(displayName) {
+  const trimmedDisplayName = String(displayName || '').trim();
+  const normalizedDisplayName = normalizeLoginIdentifier(trimmedDisplayName);
+  if (!normalizedDisplayName) return [];
+
+  if (SUPABASE_ENABLED) {
+    const supabase = getSupabase();
+    const displayNamePattern = escapeLikePattern(trimmedDisplayName);
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .ilike('name', displayNamePattern)
+      .limit(25);
+
+    if (error) throw toAppError('Failed to load users by display name', error);
+    return (data || [])
+      .map((row) => normalizeUserRow(row))
+      .filter((row) => userMatchesDisplayName(row, normalizedDisplayName));
+  }
+
+  const db = await getLowdb();
+  return db.data.users.filter((u) => userMatchesDisplayName(u, normalizedDisplayName));
+}
+
+export async function getUserByDisplayName(displayName) {
+  const users = await getUsersByDisplayName(displayName);
+  return users[0] || null;
+}
+
+export async function getUserByLogin(identifier) {
+  const trimmedIdentifier = String(identifier || '').trim();
+  const normalizedIdentifier = normalizeLoginIdentifier(identifier);
+  if (!trimmedIdentifier) return null;
+
+  const emailMatch = await getUserByEmail(normalizedIdentifier);
+  if (emailMatch) return emailMatch;
+
+  if (!normalizedIdentifier.includes('@')) {
+    return getUserByDisplayName(trimmedIdentifier);
+  }
+
+  if (SUPABASE_ENABLED) return null;
+
+  const db = await getLowdb();
+  return db.data.users.find((u) => userMatchesLoginIdentifier(u, normalizedIdentifier)) || null;
 }
 
 export async function createUser(user) {
