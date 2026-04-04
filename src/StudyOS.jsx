@@ -36,6 +36,10 @@ import {
   GraduationCap,
   BookMarked,
   ClipboardList,
+  Facebook,
+  Instagram,
+  Linkedin,
+  Github,
 } from 'lucide-react';
 import {
   LANG_META,
@@ -149,6 +153,13 @@ const STYLES = `
     text-decoration-color: #94a3b8;
   }
 `;
+
+const FOOTER_LINKS = [
+  { label: 'Facebook', href: 'https://www.facebook.com/trungnguyen191105', icon: Facebook, iconClass: 'text-[#1877F2]' },
+  { label: 'Instagram', href: 'https://www.instagram.com/peekk_apoo/', icon: Instagram, iconClass: 'text-[#E1306C]' },
+  { label: 'LinkedIn', href: 'https://www.linkedin.com/in/ngtrung05/', icon: Linkedin, iconClass: 'text-[#0A66C2]' },
+  { label: 'GitHub', href: 'https://github.com/peekkapoo', icon: Github, iconClass: 'text-slate-700' },
+];
 
 const AUTH_TOKEN_KEY = 'bs3-auth-token';
 const AUTH_USER_KEY = 'bs3-auth-user';
@@ -2854,9 +2865,27 @@ Return plain JSON only:
           </div>
         )}
 
-        <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[90] text-center text-xs text-slate-500 pointer-events-none">
-          {t.footerText}
-        </div>
+        <footer className="mt-12 pb-10 text-center text-xs text-slate-500">
+          <div className="mx-auto glass px-4 py-2 rounded-2xl shadow-sm flex flex-wrap items-center justify-center gap-x-2 gap-y-1 max-w-[92vw]">
+            <span className="text-[11px]">{t.footerText}</span>
+            <span className="hidden sm:inline text-slate-300">•</span>
+            <span className="text-[11px] uppercase tracking-[0.14em] text-slate-400">{t.footerContactLabel}</span>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {FOOTER_LINKS.map((link) => (
+                <a
+                  key={link.label}
+                  href={link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:underline inline-flex items-center gap-1.5"
+                >
+                  <link.icon size={12} className={`shrink-0 ${link.iconClass} group-hover:scale-105 transition-transform`} />
+                  {link.label}
+                </a>
+              ))}
+            </div>
+          </div>
+        </footer>
       </main>
 
       {undoState && (
