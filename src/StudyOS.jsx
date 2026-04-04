@@ -86,11 +86,38 @@ const STYLES = `
     0%,100% { transform: translateY(0); }
     50%     { transform: translateY(-5px); }
   }
+  @keyframes layoutEnter {
+    0% { opacity: 0; transform: translateY(18px) scale(0.985); filter: blur(6px) saturate(0.92); }
+    55% { opacity: 1; filter: blur(1px) saturate(1.04); }
+    100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0) saturate(1); }
+  }
+  @keyframes layoutVeil {
+    0% { opacity: 0; transform: scale(1.03); }
+    25% { opacity: 0.6; }
+    100% { opacity: 0; transform: scale(1); }
+  }
   .anim-tab { animation: fadeUp .3s ease both; }
   .anim-fade { animation: fadeIn .25s ease both; }
+  .layout-enter { animation: layoutEnter .9s cubic-bezier(0.22, 1, 0.36, 1) both; will-change: transform, opacity, filter; }
+  .layout-enter::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 40;
+    background:
+      radial-gradient(60% 50% at 45% 28%, rgba(125,211,252,0.45) 0%, rgba(125,211,252,0) 70%),
+      radial-gradient(45% 40% at 85% 80%, rgba(186,230,253,0.4) 0%, rgba(186,230,253,0) 70%);
+    animation: layoutVeil 1.2s ease-out both;
+  }
   .dot-1 { animation: bounceDot .9s 0ms infinite; }
   .dot-2 { animation: bounceDot .9s 150ms infinite; }
   .dot-3 { animation: bounceDot .9s 300ms infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .layout-enter { animation: none; }
+    .layout-enter::before { animation: none; opacity: 0; }
+  }
 
   .mesh-bg {
     background-color: var(--bg);
@@ -468,6 +495,7 @@ export default function StudyOS() {
     }
   });
   const [authReady, setAuthReady] = useState(false);
+  const [mainEnter, setMainEnter] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileDraft, setProfileDraft] = useState({ name: '', picture: '' });
   const [profileSaving, setProfileSaving] = useState(false);
@@ -603,6 +631,7 @@ export default function StudyOS() {
   const chatEndRef = useRef(null);
   const userDataLoadedRef = useRef(false);
   const dragTaskIdRef = useRef(null);
+  const preloginSeenRef = useRef(false);
 
   const pomodoroSecondsByMode = useMemo(() => getPomodoroSecondsByMode(pomodoroConfig), [pomodoroConfig]);
 
@@ -1705,6 +1734,19 @@ Return plain JSON only:
   const hasAuthSession = Boolean(authUser) && (Boolean(authToken) || DEV_AUTH_BYPASS_ENABLED);
   const isLocalDevMode = hasAuthSession && !authToken;
 
+  useEffect(() => {
+    if (!authReady) return undefined;
+    if (!hasAuthSession) {
+      preloginSeenRef.current = true;
+      return undefined;
+    }
+    if (!preloginSeenRef.current) return undefined;
+    setMainEnter(true);
+    preloginSeenRef.current = false;
+    const timer = setTimeout(() => setMainEnter(false), 1200);
+    return () => clearTimeout(timer);
+  }, [authReady, hasAuthSession]);
+
   if (!authReady) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(180deg, #E0F2FE 0%, #EFF6FF 100%)' }}>
@@ -1730,7 +1772,7 @@ Return plain JSON only:
   const undoLabel = undoState?.type?.includes('task') ? t.undoTaskDeleted : t.undoNoteDeleted;
 
   return (
-    <div className={`mesh-bg ${theme === 'dark' ? 'theme-dark text-slate-100' : 'theme-light text-slate-800'} min-h-screen md:pl-[84px] pb-24 md:pb-0 relative overflow-x-hidden`}>
+    <div className={`mesh-bg ${theme === 'dark' ? 'theme-dark text-slate-100' : 'theme-light text-slate-800'} ${mainEnter ? 'layout-enter' : ''} min-h-screen md:pl-[84px] pb-24 md:pb-0 relative overflow-x-hidden`}>
       <style>{FONTS + STYLES}</style>
 
       <nav className="
