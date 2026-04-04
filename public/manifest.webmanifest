@@ -1,0 +1,17 @@
+{
+  "name": "Blue Study",
+  "short_name": "Blue Study",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F0F9FF",
+  "theme_color": "#0A1628",
+  "description": "Plan tasks, take notes, and track focused study sessions in one place.",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

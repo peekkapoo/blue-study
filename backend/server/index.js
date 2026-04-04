@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import { randomUUID } from 'node:crypto';
+import webpush from 'web-push';
 import {
   createUser,
   ensureUserData,
@@ -12,7 +13,10 @@ import {
   getUserByEmail,
   getUserById,
   getUserData,
+  getPushSubscriptions,
   isSupabaseConfigured,
+  removePushSubscription,
+  savePushSubscription,
   saveUserData,
   updateUser,
 } from './db.js';
@@ -27,8 +31,16 @@ const FRONTEND_ORIGINS = String(process.env.FRONTEND_ORIGIN || '')
 const ALLOWED_ORIGINS = [...new Set([...DEFAULT_FRONTEND_ORIGINS, ...FRONTEND_ORIGINS])];
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:hello@blue-study.app';
+const HAS_VAPID_KEYS = Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID || undefined);
+
+if (HAS_VAPID_KEYS) {
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+}
 
 app.use(cors({
   origin(origin, callback) {
@@ -107,6 +119,82 @@ app.get('/api/public-config', (_req, res) => {
   res.json({
     googleClientId: GOOGLE_CLIENT_ID || null,
   });
+});
+
+app.get('/api/push/public-key', (_req, res) => {
+  if (!VAPID_PUBLIC_KEY) {
+    return res.status(503).json({ message: 'VAPID public key not configured' });
+  }
+  return res.json({ publicKey: VAPID_PUBLIC_KEY });
+});
+
+app.post('/api/push/subscribe', authRequired, async (req, res, next) => {
+  try {
+    const subscription = req.body?.subscription;
+    if (!subscription?.endpoint) {
+      return res.status(400).json({ message: 'Missing push subscription' });
+    }
+    await savePushSubscription(req.user.id, subscription);
+    return res.json({ ok: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post('/api/push/unsubscribe', authRequired, async (req, res, next) => {
+  try {
+    const endpoint = req.body?.endpoint || req.body?.subscription?.endpoint;
+    if (!endpoint) {
+      return res.status(400).json({ message: 'Missing push endpoint' });
+    }
+    await removePushSubscription(req.user.id, endpoint);
+    return res.json({ ok: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post('/api/push/send', authRequired, async (req, res, next) => {
+  try {
+    if (!HAS_VAPID_KEYS) {
+      return res.status(503).json({ message: 'VAPID keys not configured' });
+    }
+
+    const subscriptions = await getPushSubscriptions(req.user.id);
+    if (!subscriptions.length) {
+      return res.status(400).json({ message: 'No push subscriptions found' });
+    }
+
+    const title = String(req.body?.title || 'Blue Study');
+    const body = String(req.body?.body || 'You have a new study reminder.');
+    const url = String(req.body?.url || 'https://blue-study.vercel.app/');
+
+    const payload = JSON.stringify({
+      title,
+      body,
+      url,
+      icon: '/favicon.svg',
+      badge: '/favicon.svg',
+    });
+
+    const results = await Promise.allSettled(subscriptions.map(async (subscription) => {
+      try {
+        await webpush.sendNotification(subscription, payload);
+        return { ok: true, endpoint: subscription.endpoint };
+      } catch (error) {
+        if ([404, 410].includes(error?.statusCode)) {
+          await removePushSubscription(req.user.id, subscription.endpoint);
+        }
+        return { ok: false, endpoint: subscription.endpoint, statusCode: error?.statusCode || 0 };
+      }
+    }));
+
+    const sent = results.filter((result) => result.status === 'fulfilled' && result.value?.ok).length;
+    const failed = results.length - sent;
+    return res.json({ ok: true, sent, failed });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 app.post('/api/auth/register', async (req, res) => {
@@ -277,6 +365,9 @@ app.listen(PORT, () => {
     console.log('Using Supabase storage backend.');
   } else {
     console.warn('Using lowdb file storage backend. Configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY for durable storage.');
+  }
+  if (!HAS_VAPID_KEYS) {
+    console.warn('VAPID keys not configured. Push notifications are disabled.');
   }
   console.log(`Blue Study backend running on http://localhost:${PORT}`);
 });

@@ -49,6 +49,9 @@ PORT=4000
 FRONTEND_ORIGIN=http://localhost:5173,https://blue-study.vercel.app
 JWT_SECRET=replace_with_a_long_random_secret
 GOOGLE_CLIENT_ID=your_google_web_client_id.apps.googleusercontent.com
+VAPID_PUBLIC_KEY=your_vapid_public_key
+VAPID_PRIVATE_KEY=your_vapid_private_key
+VAPID_SUBJECT=mailto:hello@yourdomain.com
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
@@ -63,6 +66,30 @@ Notes:
 - `SUPABASE_URL` must be the Project URL (`https://...supabase.co`) from Supabase settings.
 - Do not use `sb_publishable_...` as `SUPABASE_URL`.
 - `SUPABASE_SERVICE_ROLE_KEY` must stay backend-only (never put in frontend env).
+
+## 3.1) Web Push (PWA) setup
+
+Generate VAPID keys:
+
+```bash
+npx web-push generate-vapid-keys --json
+```
+
+Copy `publicKey` to `VAPID_PUBLIC_KEY` and `privateKey` to `VAPID_PRIVATE_KEY` in `backend/.env`.
+
+iOS note: Web Push works only after users add the app to the Home Screen (iOS 16.4+).
+
+If you use Supabase, create a `push_subscriptions` table:
+
+```sql
+create table if not exists public.push_subscriptions (
+	id uuid default gen_random_uuid() primary key,
+	user_id text not null,
+	endpoint text not null unique,
+	subscription jsonb not null,
+	created_at timestamp with time zone default now()
+);
+```
 
 ## 3) Run
 
@@ -131,6 +158,10 @@ If backend returns `503` on Render:
 - `GET /api/auth/me`
 - `GET /api/user-data`
 - `PUT /api/user-data`
+- `GET /api/push/public-key`
+- `POST /api/push/subscribe`
+- `POST /api/push/unsubscribe`
+- `POST /api/push/send`
 
 User data is persisted in Supabase when configured. If Supabase env vars are missing, backend falls back to local file storage (`backend/server/data/db.json`).
 

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const DEFAULT_DB = {
   users: [],
   userData: {},
+  pushSubscriptions: {},
 };
 
 export const defaultUserPayload = {
@@ -100,6 +101,14 @@ function toAppError(prefix, error) {
   return new Error(`${prefix}: ${message}`);
 }
 
+function toPushTableError(error) {
+  const message = String(error?.message || '');
+  if (message.includes('push_subscriptions')) {
+    return new Error('Missing push_subscriptions table. Create it in Supabase before enabling push notifications.');
+  }
+  return null;
+}
+
 function cloneDefaultPayload() {
   return {
     notes: [],
@@ -118,6 +127,31 @@ function normalizeUserDataPayload(payload = {}) {
     ...cloneDefaultPayload(),
     ...(payload && typeof payload === 'object' ? payload : {}),
   };
+}
+
+function normalizePushSubscription(subscription) {
+  if (!subscription || typeof subscription !== 'object') return null;
+  if (typeof subscription.endpoint !== 'string' || !subscription.endpoint) return null;
+  if (!subscription.keys || typeof subscription.keys !== 'object') return null;
+  return subscription;
+}
+
+function dedupePushSubscriptions(list) {
+  const map = new Map();
+  list.forEach((item) => {
+    const normalized = normalizePushSubscription(item);
+    if (normalized) {
+      map.set(normalized.endpoint, normalized);
+    }
+  });
+  return Array.from(map.values());
+}
+
+async function ensurePushStore(db) {
+  if (!db.data.pushSubscriptions || typeof db.data.pushSubscriptions !== 'object') {
+    db.data.pushSubscriptions = {};
+    await db.write();
+  }
 }
 
 export function isSupabaseConfigured() {
@@ -272,5 +306,69 @@ export async function saveUserData(userId, payload) {
 
   const db = await getLowdb();
   db.data.userData[userId] = safePayload;
+  await db.write();
+}
+
+export async function getPushSubscriptions(userId) {
+  if (SUPABASE_ENABLED) {
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from('push_subscriptions')
+      .select('subscription')
+      .eq('user_id', userId);
+
+    if (error) throw toPushTableError(error) || toAppError('Failed to load push subscriptions', error);
+    return (data || [])
+      .map((row) => normalizePushSubscription(row.subscription))
+      .filter(Boolean);
+  }
+
+  const db = await getLowdb();
+  await ensurePushStore(db);
+  return dedupePushSubscriptions(db.data.pushSubscriptions[userId] || []);
+}
+
+export async function savePushSubscription(userId, subscription) {
+  const normalized = normalizePushSubscription(subscription);
+  if (!normalized) {
+    throw new Error('Invalid push subscription');
+  }
+
+  if (SUPABASE_ENABLED) {
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from('push_subscriptions')
+      .upsert({ user_id: userId, endpoint: normalized.endpoint, subscription: normalized }, { onConflict: 'endpoint' });
+
+    if (error) throw toPushTableError(error) || toAppError('Failed to save push subscription', error);
+    return;
+  }
+
+  const db = await getLowdb();
+  await ensurePushStore(db);
+  const existing = db.data.pushSubscriptions[userId] || [];
+  db.data.pushSubscriptions[userId] = dedupePushSubscriptions([...existing, normalized]);
+  await db.write();
+}
+
+export async function removePushSubscription(userId, endpoint) {
+  if (!endpoint) return;
+
+  if (SUPABASE_ENABLED) {
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from('push_subscriptions')
+      .delete()
+      .eq('user_id', userId)
+      .eq('endpoint', endpoint);
+
+    if (error) throw toPushTableError(error) || toAppError('Failed to remove push subscription', error);
+    return;
+  }
+
+  const db = await getLowdb();
+  await ensurePushStore(db);
+  const existing = db.data.pushSubscriptions[userId] || [];
+  db.data.pushSubscriptions[userId] = existing.filter((item) => item?.endpoint !== endpoint);
   await db.write();
 }

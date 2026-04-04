@@ -96,3 +96,22 @@ export const userDataApi = {
   get: (token) => apiRequest('/api/user-data', {}, token),
   save: (token, payload) => apiRequest('/api/user-data', { method: 'PUT', body: JSON.stringify(payload) }, token),
 };
+
+export const pushApi = {
+  publicKey: () => apiRequest('/api/push/public-key'),
+  subscribe: (token, subscription) => apiRequest(
+    '/api/push/subscribe',
+    { method: 'POST', body: JSON.stringify({ subscription }) },
+    token,
+  ),
+  unsubscribe: (token, endpoint) => apiRequest(
+    '/api/push/unsubscribe',
+    { method: 'POST', body: JSON.stringify({ endpoint }) },
+    token,
+  ),
+  send: (token, payload) => apiRequest(
+    '/api/push/send',
+    { method: 'POST', body: JSON.stringify(payload) },
+    token,
+  ),
+};

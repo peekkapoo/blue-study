@@ -53,7 +53,16 @@ import {
   SEED_TASK_TEXTS,
 } from './App.i18n';
 import AuthScreen from './AuthScreen';
-import { authApi, userDataApi } from './api';
+import { authApi, pushApi, userDataApi } from './api';
+import {
+  ensureServiceWorker,
+  getExistingSubscription,
+  isIosDevice,
+  isPushSupported,
+  isStandaloneMode,
+  subscribeToPush,
+  unsubscribeFromPush,
+} from './push';
 
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');`;
 
@@ -502,6 +511,14 @@ export default function StudyOS() {
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState('');
   const [profileAvatarError, setProfileAvatarError] = useState('');
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushPermission, setPushPermission] = useState('default');
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState('');
+  const [pushInfo, setPushInfo] = useState('');
+  const [pushStandalone, setPushStandalone] = useState(false);
+  const [pushIos, setPushIos] = useState(false);
   const [theme, setTheme] = useState(() => (localStorage.getItem('bs3-theme') === 'dark' ? 'dark' : 'light'));
   const [now, setNow] = useState(() => new Date());
   const [lang, setLang] = useState(DEFAULT_LANG);
@@ -634,6 +651,12 @@ export default function StudyOS() {
   const preloginSeenRef = useRef(false);
 
   const pomodoroSecondsByMode = useMemo(() => getPomodoroSecondsByMode(pomodoroConfig), [pomodoroConfig]);
+  const pushStatusLabel = useMemo(() => {
+    if (!pushSupported) return t.pushStatusUnsupported;
+    if (pushPermission === 'denied') return t.pushStatusDenied;
+    if (pushSubscribed) return t.pushStatusEnabled;
+    return t.pushStatusDisabled;
+  }, [pushPermission, pushSubscribed, pushSupported, t]);
 
   const playPomodoroBell = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -671,6 +694,10 @@ export default function StudyOS() {
     setProfileSaving(false);
     setProfileError('');
     setProfileSuccess('');
+    setProfileAvatarError('');
+    setPushError('');
+    setPushInfo('');
+    setPushSubscribed(false);
     userDataLoadedRef.current = false;
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(AUTH_USER_KEY);
@@ -686,6 +713,8 @@ export default function StudyOS() {
     setProfileError('');
     setProfileSuccess('');
     setProfileAvatarError('');
+    setPushError('');
+    setPushInfo('');
     setProfileOpen(true);
   };
 
@@ -694,6 +723,8 @@ export default function StudyOS() {
     setProfileError('');
     setProfileSuccess('');
     setProfileAvatarError('');
+    setPushError('');
+    setPushInfo('');
   };
 
   const generateProfileAvatar = () => {
@@ -737,6 +768,99 @@ export default function StudyOS() {
         return;
       }
       setProfileAvatarError(t.profileAvatarUploadError);
+    }
+  };
+
+  const enablePushNotifications = async () => {
+    setPushError('');
+    setPushInfo('');
+
+    if (!pushSupported) {
+      setPushError(t.pushNotSupported);
+      return;
+    }
+    if (!authToken) {
+      setPushError(t.pushAuthRequired);
+      return;
+    }
+    if (pushIos && !pushStandalone) {
+      setPushError(t.pushStandaloneHint);
+      return;
+    }
+
+    setPushBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      setPushPermission(permission);
+      if (permission !== 'granted') {
+        setPushError(permission === 'denied' ? '' : t.pushPermissionDismissed);
+        return;
+      }
+
+      const { publicKey } = await pushApi.publicKey();
+      if (!publicKey) {
+        setPushError(t.pushKeyMissing);
+        return;
+      }
+
+      await ensureServiceWorker();
+      const existing = await getExistingSubscription();
+      const subscription = existing || await subscribeToPush(publicKey);
+      await pushApi.subscribe(authToken, subscription);
+      setPushSubscribed(true);
+      setPushInfo(t.pushEnabled);
+    } catch (err) {
+      setPushError(err?.message || t.genericError);
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const disablePushNotifications = async () => {
+    setPushError('');
+    setPushInfo('');
+
+    if (!authToken) {
+      setPushError(t.pushAuthRequired);
+      return;
+    }
+
+    setPushBusy(true);
+    try {
+      const subscription = await unsubscribeFromPush();
+      if (subscription?.endpoint) {
+        await pushApi.unsubscribe(authToken, subscription.endpoint);
+      }
+      setPushSubscribed(false);
+      setPushInfo(t.pushDisabled);
+    } catch (err) {
+      setPushError(err?.message || t.genericError);
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const sendTestPush = async () => {
+    setPushError('');
+    setPushInfo('');
+
+    if (!authToken) {
+      setPushError(t.pushAuthRequired);
+      return;
+    }
+
+    setPushBusy(true);
+    try {
+      await pushApi.send(authToken, {
+        title: 'Blue Study',
+        body: t.pushTestBody,
+        url: window.location.href,
+      });
+      setPushInfo(t.pushTestSent);
+    } catch (err) {
+      setPushError(err?.message || t.genericError);
+    } finally {
+      setPushBusy(false);
     }
   };
 
@@ -1747,6 +1871,43 @@ Return plain JSON only:
     return () => clearTimeout(timer);
   }, [authReady, hasAuthSession]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const supported = isPushSupported();
+    setPushSupported(supported);
+    if (supported && typeof Notification !== 'undefined') {
+      setPushPermission(Notification.permission || 'default');
+    }
+    setPushStandalone(isStandaloneMode());
+    setPushIos(isIosDevice());
+
+    const mq = window.matchMedia?.('(display-mode: standalone)');
+    const handleDisplayMode = () => setPushStandalone(isStandaloneMode());
+    mq?.addEventListener?.('change', handleDisplayMode);
+    return () => mq?.removeEventListener?.('change', handleDisplayMode);
+  }, []);
+
+  useEffect(() => {
+    if (!pushSupported) return undefined;
+    let active = true;
+    const loadSubscription = async () => {
+      try {
+        const subscription = await getExistingSubscription();
+        if (!active) return;
+        if (subscription && authToken) {
+          await pushApi.subscribe(authToken, subscription).catch(() => {});
+        }
+        setPushSubscribed(Boolean(subscription));
+      } catch {
+        if (active) setPushSubscribed(false);
+      }
+    };
+    loadSubscription();
+    return () => {
+      active = false;
+    };
+  }, [pushSupported, authToken]);
+
   if (!authReady) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(180deg, #E0F2FE 0%, #EFF6FF 100%)' }}>
@@ -1973,6 +2134,66 @@ Return plain JSON only:
                       readOnly
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50"
                     />
+                  </div>
+                  <div className="rounded-2xl border border-sky-100 bg-slate-50/60 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold text-slate-600">{t.pushTitle}</p>
+                        <p className="text-[11px] text-slate-500 mt-1">{t.pushSubtitle}</p>
+                      </div>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-1 rounded-full ${pushSubscribed ? 'bg-emerald-100 text-emerald-700' : pushPermission === 'denied' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}
+                      >
+                        {pushStatusLabel}
+                      </span>
+                    </div>
+
+                    {!pushSupported ? (
+                      <p className="text-xs text-slate-500">{t.pushNotSupported}</p>
+                    ) : (
+                      <>
+                        {pushIos && !pushStandalone && (
+                          <p className="text-xs text-amber-600">{t.pushStandaloneHint}</p>
+                        )}
+                        {!authToken && (
+                          <p className="text-xs text-amber-600">{t.pushAuthRequired}</p>
+                        )}
+                        {pushPermission === 'denied' && (
+                          <p className="text-xs text-rose-600">{t.pushPermissionDenied}</p>
+                        )}
+                        {pushPermission === 'default' && !pushSubscribed && !pushError && (
+                          <p className="text-xs text-slate-500">{t.pushPermissionDismissed}</p>
+                        )}
+                        {pushError && <p className="text-xs text-rose-600">{pushError}</p>}
+                        {pushInfo && <p className="text-xs text-emerald-600">{pushInfo}</p>}
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={enablePushNotifications}
+                            disabled={pushBusy || pushSubscribed || !authToken}
+                            className="px-3 py-1.5 text-[11px] rounded-lg bg-sky-100 text-sky-700 font-semibold disabled:opacity-60"
+                          >
+                            {t.pushEnable}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={disablePushNotifications}
+                            disabled={pushBusy || !pushSubscribed}
+                            className="px-3 py-1.5 text-[11px] rounded-lg bg-slate-200 text-slate-700 font-semibold disabled:opacity-60"
+                          >
+                            {t.pushDisable}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={sendTestPush}
+                            disabled={pushBusy || !pushSubscribed}
+                            className="px-3 py-1.5 text-[11px] rounded-lg bg-emerald-100 text-emerald-700 font-semibold disabled:opacity-60"
+                          >
+                            {t.pushTest}
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                   {isLocalDevMode && (
                     <p className="text-[11px] text-amber-600">{t.profileLocalDevNotice}</p>
