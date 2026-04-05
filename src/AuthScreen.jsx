@@ -239,7 +239,7 @@ export default function AuthScreen({
             <div className="relative z-10">
               <div className="inline-flex items-center gap-3">
                 <BrandMark
-                  className="w-11 h-11 rounded-2xl ring-1 ring-sky-200/40 shadow-lg shadow-sky-900/30"
+                  className="w-11 h-11 ring-1 ring-sky-200/40 shadow-lg shadow-sky-900/30"
                   iconSize={22}
                   ariaLabel={`${t.authBrand} logo`}
                 />
@@ -268,7 +268,7 @@ export default function AuthScreen({
               <div>
                 <div className="inline-flex items-center gap-2.5">
                   <BrandMark
-                    className={`w-8 h-8 rounded-xl ring-1 ${isDarkTheme ? 'ring-sky-400/40' : 'ring-sky-100'}`}
+                    className={`w-8 h-8 ring-1 ${isDarkTheme ? 'ring-sky-400/40' : 'ring-sky-100'}`}
                     iconSize={16}
                     strokeWidth={2.4}
                     ariaLabel={`${t.authBrand} logo`}

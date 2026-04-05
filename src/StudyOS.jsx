@@ -2819,7 +2819,7 @@ Return plain JSON only:
         style={{ background: 'linear-gradient(170deg, #0A1628 0%, #0F2244 100%)' }}
       >
         <div className="hidden md:flex flex-col items-center gap-1.5">
-          <BrandMark className="w-10 h-10 rounded-[14px] shadow-lg" iconSize={19} strokeWidth={2.5} ariaLabel="Blue Study logo" />
+          <BrandMark className="w-10 h-10 shadow-lg" iconSize={19} strokeWidth={2.5} ariaLabel="Blue Study logo" />
           <span className="syne text-[9px] font-bold text-sky-400 tracking-[3px] uppercase">{t.brandShort}</span>
         </div>
 
