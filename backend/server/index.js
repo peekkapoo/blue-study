@@ -226,8 +226,8 @@ app.post('/api/push/send', authRequired, async (req, res, next) => {
       title,
       body,
       url,
-      icon: '/favicon.svg',
-      badge: '/favicon.svg',
+      icon: '/icon-192.png',
+      badge: '/badge-72.png',
     });
 
     const results = await Promise.allSettled(subscriptions.map(async (subscription) => {

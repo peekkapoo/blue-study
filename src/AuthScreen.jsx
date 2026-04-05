@@ -45,6 +45,8 @@ const boxStyle = {
   background: 'linear-gradient(150deg, #07162A 0%, #0E2B60 50%, #0B3D85 100%)',
 };
 
+const BRAND_LOGO_SRC = '/blue-logo.png';
+
 const DISPLAY_NAME_TAKEN_MESSAGE = 'Display name is already in use. Please choose another one.';
 const DISPLAY_NAME_DUPLICATED_LOGIN_MESSAGE = 'Display name is duplicated. Use email to sign in.';
 
@@ -236,7 +238,14 @@ export default function AuthScreen({
             <div className="absolute -top-28 right-[-60px] w-56 h-56 rounded-full bg-sky-500/25 blur-2xl" />
             <div className="absolute -bottom-24 left-[-40px] w-48 h-48 rounded-full bg-cyan-400/25 blur-2xl" />
             <div className="relative z-10">
-              <p className="text-[11px] uppercase tracking-[4px] text-sky-200 font-semibold">{t.authBrand}</p>
+              <div className="inline-flex items-center gap-3">
+                <img
+                  src={BRAND_LOGO_SRC}
+                  alt={`${t.authBrand} logo`}
+                  className="w-11 h-11 rounded-2xl object-cover ring-1 ring-sky-200/40 shadow-lg shadow-sky-900/30"
+                />
+                <p className="text-[11px] uppercase tracking-[4px] text-sky-200 font-semibold">{t.authBrand}</p>
+              </div>
               <h1 className="auth-title text-4xl md:text-5xl mt-5 leading-tight">{t.authHeadline}</h1>
               <p className="mt-4 text-sky-100 text-sm md:text-base leading-relaxed">
                 {t.authSubhead}
@@ -258,7 +267,14 @@ export default function AuthScreen({
           <section className={cardClass}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-[11px] uppercase tracking-[3px] text-slate-400">{t.authBrand}</p>
+                <div className="inline-flex items-center gap-2.5">
+                  <img
+                    src={BRAND_LOGO_SRC}
+                    alt={`${t.authBrand} logo`}
+                    className={`w-8 h-8 rounded-xl object-cover ring-1 ${isDarkTheme ? 'ring-sky-400/40' : 'ring-sky-100'}`}
+                  />
+                  <p className="text-[11px] uppercase tracking-[3px] text-slate-400">{t.authBrand}</p>
+                </div>
                 <h2 className={`auth-title text-2xl mt-2 ${isDarkTheme ? 'text-slate-100' : 'text-slate-900'}`}>
                   {mode === 'login' ? t.authSignIn : t.authCreateAccount}
                 </h2>

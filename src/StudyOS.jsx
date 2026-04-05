@@ -255,6 +255,8 @@ const FOOTER_LINKS = [
   { label: 'GitHub', href: 'https://github.com/peekkapoo', icon: FaGithub, iconClass: 'text-slate-700' },
 ];
 
+const BRAND_LOGO_SRC = '/blue-logo.png';
+
 const AUTH_TOKEN_KEY = 'bs3-auth-token';
 const AUTH_USER_KEY = 'bs3-auth-user';
 const DEV_AUTH_BYPASS_ENABLED = import.meta.env.DEV && ['1', 'true', 'yes', 'on'].includes(String(import.meta.env.VITE_AUTH_BYPASS || '').trim().toLowerCase());
@@ -2818,8 +2820,8 @@ Return plain JSON only:
         style={{ background: 'linear-gradient(170deg, #0A1628 0%, #0F2244 100%)' }}
       >
         <div className="hidden md:flex flex-col items-center gap-1.5">
-          <div className="w-10 h-10 rounded-[14px] flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #38BDF8, #1D4ED8)' }}>
-            <Zap size={19} className="text-white" strokeWidth={2.5} />
+          <div className="w-10 h-10 rounded-[14px] overflow-hidden shadow-lg ring-1 ring-sky-300/40">
+            <img src={BRAND_LOGO_SRC} alt="Blue Study logo" className="w-full h-full object-cover" />
           </div>
           <span className="syne text-[9px] font-bold text-sky-400 tracking-[3px] uppercase">{t.brandShort}</span>
         </div>
