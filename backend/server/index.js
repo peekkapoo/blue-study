@@ -34,6 +34,7 @@ const FRONTEND_ORIGINS = String(process.env.FRONTEND_ORIGIN || '')
 const ALLOWED_ORIGINS = [...new Set([...DEFAULT_FRONTEND_ORIGINS, ...FRONTEND_ORIGINS])];
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:hello@blue-study.app';
@@ -55,7 +56,7 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '4mb' }));
 
 function sanitizeUser(user) {
   return {
@@ -76,6 +77,11 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function ensureObject(value, fallback = null) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
+  return value;
+}
+
 function normalizeUserData(body = {}) {
   return {
     notes: ensureArray(body.notes),
@@ -86,6 +92,7 @@ function normalizeUserData(body = {}) {
     studySessions: ensureArray(body.studySessions),
     revisions: ensureArray(body.revisions),
     exams: ensureArray(body.exams),
+    pomodoro: ensureObject(body.pomodoro, null),
   };
 }
 
@@ -124,6 +131,46 @@ app.get('/api/public-config', (_req, res) => {
   res.json({
     googleClientId: GOOGLE_CLIENT_ID || null,
   });
+});
+
+app.post('/api/ai/chat', async (req, res, next) => {
+  try {
+    const userMessage = String(req.body?.userMessage || '').trim();
+    const systemPrompt = String(req.body?.systemPrompt || '').trim();
+
+    if (!userMessage) {
+      return res.status(400).json({ message: 'Missing user message' });
+    }
+
+    if (!ANTHROPIC_API_KEY) {
+      return res.status(503).json({ message: 'AI backend is not configured. Set ANTHROPIC_API_KEY on the server.' });
+    }
+
+    const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      }),
+    });
+
+    const data = await upstream.json().catch(() => ({}));
+    if (!upstream.ok) {
+      const message = data?.error?.message || data?.message || 'AI request failed';
+      return res.status(upstream.status).json({ message });
+    }
+
+    return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
 });
 
 app.get('/api/push/public-key', (_req, res) => {
@@ -378,6 +425,10 @@ app.put('/api/user-data', authRequired, async (req, res) => {
 app.use((err, _req, res, _next) => {
   if (err?.message === 'Origin not allowed by CORS') {
     res.status(403).json({ message: 'Origin not allowed by CORS' });
+    return;
+  }
+  if (err?.type === 'entity.parse.failed' || err?.status === 400) {
+    res.status(400).json({ message: 'Invalid JSON body' });
     return;
   }
   console.error(err);

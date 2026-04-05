@@ -52,7 +52,7 @@ import {
   SEED_TASK_TEXTS,
 } from './App.i18n';
 import AuthScreen from './AuthScreen';
-import { authApi, pushApi, userDataApi } from './api';
+import { aiApi, authApi, pushApi, userDataApi } from './api';
 import {
   ensureServiceWorker,
   getExistingSubscription,
@@ -441,6 +441,27 @@ const normalizePomodoroSnapshot = (rawPomodoro, todayKey) => {
 };
 
 const formatCountdown = (seconds) => `${pad2(Math.floor(seconds / 60))}:${pad2(seconds % 60)}`;
+const SHORT_DATE_OPTIONS = { day: '2-digit', month: '2-digit', year: 'numeric' };
+const SHORT_DATE_TIME_OPTIONS = {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+};
+const isNumericDateParts = (options = SHORT_DATE_OPTIONS) => {
+  const hasNumericDay = options?.day === '2-digit' || options?.day === 'numeric';
+  const hasNumericMonth = options?.month === '2-digit' || options?.month === 'numeric';
+  const hasNumericYear = options?.year === 'numeric';
+  return hasNumericDay && hasNumericMonth && hasNumericYear && !options?.weekday;
+};
+const formatDateDmy = (date, options = SHORT_DATE_OPTIONS) => {
+  const dayValue = date.getDate();
+  const monthValue = date.getMonth() + 1;
+  const day = options?.day === '2-digit' ? pad2(dayValue) : String(dayValue);
+  const month = options?.month === '2-digit' ? pad2(monthValue) : String(monthValue);
+  return `${day}/${month}/${date.getFullYear()}`;
+};
 
 const getWorkflowNav = (text) => [
   { id: 'today', label: text.navToday, icon: LayoutDashboard },
@@ -595,13 +616,17 @@ export default function StudyOS() {
     [t],
   );
   const locale = LANG_META[lang].locale;
-  const formatDate = (date, options) => date.toLocaleDateString(locale, options);
-  const formatDateFromKey = (dateKey, options) => formatDate(parseDateKey(dateKey), options);
+  const formatDate = (date, options = SHORT_DATE_OPTIONS) => {
+    if (isNumericDateParts(options)) return formatDateDmy(date, options);
+    return date.toLocaleDateString(locale, options);
+  };
+  const formatDateFromKey = (dateKey, options = SHORT_DATE_OPTIONS) => formatDate(parseDateKey(dateKey), options);
   const formatDateTime = (iso) => {
     if (!iso) return '-';
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return '-';
-    return d.toLocaleString(locale, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+    const timeLabel = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+    return `${formatDateDmy(d, SHORT_DATE_TIME_OPTIONS)} ${timeLabel}`;
   };
   const categoryLabel = useCallback((cat) => (CATEGORY_LABELS[lang][cat] ?? cat), [lang]);
   const seedNoteText = useCallback((seedKey) => SEED_NOTE_TEXTS[seedKey]?.[lang], [lang]);
@@ -1805,6 +1830,27 @@ export default function StudyOS() {
     return count;
   }, [taskFilters]);
 
+  const plannerScopeLabel = useMemo(() => {
+    const formatScopeDate = (dateKey) => formatDateDmy(parseDateKey(dateKey), SHORT_DATE_OPTIONS);
+
+    if (plannerMode === 'week') {
+      const weekStartKey = toDateKey(startOfWeek(selDate));
+      const weekEndKey = addDays(weekStartKey, 6);
+      return `${t.thisWeek}: ${formatScopeDate(weekStartKey)} - ${formatScopeDate(weekEndKey)}`;
+    }
+
+    if (plannerMode === 'upcoming') {
+      const upcomingEndKey = addDays(todayKey, 14);
+      return `${t.upcoming}: ${formatScopeDate(todayKey)} - ${formatScopeDate(upcomingEndKey)}`;
+    }
+
+    if (plannerMode === 'day') {
+      return `${t.selectedDay}: ${formatScopeDate(toDateKey(selDate))}`;
+    }
+
+    return `${t.today}: ${formatScopeDate(todayKey)}`;
+  }, [plannerMode, selDate, t.selectedDay, t.thisWeek, t.today, t.upcoming, todayKey]);
+
   const allTags = useMemo(() => {
     const set = new Set();
     notes.forEach((note) => (note.tags || []).forEach((tag) => set.add(tag)));
@@ -1865,18 +1911,10 @@ Open tasks: ${JSON.stringify(tasks.filter((task) => !task.completed).slice(0, 15
 Return plain JSON only:
 {"reply":"text","action":"CHAT|ADD_TASK|ADD_NOTE","newTasks":[{"title":"","time":"HH:MM","dateString":"YYYY-MM-DD","dueDate":"YYYY-MM-DD","priority":"low|medium|high"}],"newNotes":[{"title":"","content":"","category":""}]}`;
 
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system: systemPrompt,
-          messages: [{ role: 'user', content: userMsg }],
-        }),
+      const data = await aiApi.chat({
+        systemPrompt,
+        userMessage: userMsg,
       });
-
-      const data = await res.json();
       const raw = data.content?.[0]?.text || '{}';
       let result;
       try {
@@ -1925,8 +1963,8 @@ Return plain JSON only:
           ...prev,
         ]);
       }
-    } catch {
-      setChatHistory((prev) => [...prev, { role: 'ai', content: t.connectionError }]);
+    } catch (err) {
+      setChatHistory((prev) => [...prev, { role: 'ai', content: err?.message || t.connectionError }]);
     } finally {
       setAiLoading(false);
     }
@@ -2601,7 +2639,16 @@ Return plain JSON only:
                         onDrop={() => {
                           const dragId = dragTaskIdRef.current;
                           if (!dragId) return;
-                          setTasks((prev) => prev.map((task) => task.id === dragId ? { ...task, dateKey, updatedAt: isoNow() } : task));
+                          setTasks((prev) => prev.map((task) => {
+                            if (task.id !== dragId) return task;
+                            const keepDueInSync = task.dueDateKey === task.dateKey;
+                            return {
+                              ...task,
+                              dateKey,
+                              dueDateKey: keepDueInSync ? dateKey : task.dueDateKey,
+                              updatedAt: isoNow(),
+                            };
+                          }));
                           dragTaskIdRef.current = null;
                         }}
                         className="rounded-2xl border border-sky-100 p-2 min-h-[180px]"
@@ -2629,11 +2676,14 @@ Return plain JSON only:
             <div className="xl:col-span-2 space-y-5">
               <div data-tutorial="task-engine" className="glass rounded-3xl p-5 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                  <div className="flex items-center gap-2">
-                    <h3 className="syne font-bold text-[#0A1628]">{t.taskEngineTitle}</h3>
-                    <span className="text-[10px] font-bold bg-sky-100 text-sky-600 px-2 py-1 rounded-full">
-                      {baseVisibleTasks.length} {t.visibleLabel}
-                    </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="syne font-bold text-[#0A1628]">{t.taskEngineTitle}</h3>
+                      <span className="text-[10px] font-bold bg-sky-100 text-sky-600 px-2 py-1 rounded-full">
+                        {baseVisibleTasks.length} {t.visibleLabel}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">{plannerScopeLabel}</p>
                   </div>
                   <button
                     type="button"
@@ -2668,6 +2718,7 @@ Return plain JSON only:
                         {t.dueLabel}
                         <input
                           type="date"
+                          lang={locale}
                           value={newTask.dueDateKey}
                           onChange={(e) => setNewTask((prev) => ({ ...prev, dueDateKey: e.target.value }))}
                           className="mt-1 w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs"
@@ -2717,6 +2768,7 @@ Return plain JSON only:
                         {t.reminderLabel}
                         <input
                           type="datetime-local"
+                          lang={locale}
                           value={newTask.reminderAt}
                           onChange={(e) => setNewTask((prev) => ({ ...prev, reminderAt: e.target.value }))}
                           className="mt-1 w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs"
@@ -2828,7 +2880,7 @@ Return plain JSON only:
                                   <input value={taskDraft.task} onChange={(e) => setTaskDraft((prev) => ({ ...prev, task: e.target.value }))} className="w-full px-2 py-1.5 text-xs rounded border border-slate-300" />
                                   <div className="grid grid-cols-2 gap-2">
                                     <input type="time" value={taskDraft.time || '09:00'} onChange={(e) => setTaskDraft((prev) => ({ ...prev, time: e.target.value }))} className="px-2 py-1.5 text-xs rounded border border-slate-300" />
-                                    <input type="date" value={taskDraft.dueDateKey} onChange={(e) => setTaskDraft((prev) => ({ ...prev, dueDateKey: e.target.value }))} className="px-2 py-1.5 text-xs rounded border border-slate-300" />
+                                    <input type="date" lang={locale} value={taskDraft.dueDateKey} onChange={(e) => setTaskDraft((prev) => ({ ...prev, dueDateKey: e.target.value }))} className="px-2 py-1.5 text-xs rounded border border-slate-300" />
                                     <select value={taskDraft.priority} onChange={(e) => setTaskDraft((prev) => ({ ...prev, priority: e.target.value }))} className="px-2 py-1.5 text-xs rounded border border-slate-300">
                                       <option value="low">{t.priorityLow}</option>
                                       <option value="medium">{t.priorityMedium}</option>
@@ -3001,7 +3053,7 @@ Return plain JSON only:
                     {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
                   </select>
                   <input type="number" min="15" step="15" value={newSession.duration} onChange={(e) => setNewSession((prev) => ({ ...prev, duration: Number(e.target.value || 15) }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" placeholder={t.minutesPlaceholder} />
-                  <input type="date" value={newSession.dateKey} onChange={(e) => setNewSession((prev) => ({ ...prev, dateKey: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
+                  <input type="date" lang={locale} value={newSession.dateKey} onChange={(e) => setNewSession((prev) => ({ ...prev, dateKey: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
                   <select value={newSession.focus} onChange={(e) => setNewSession((prev) => ({ ...prev, focus: Number(e.target.value) }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
                     {[1, 2, 3, 4, 5].map((f) => <option key={f} value={f}>{t.focusLabel} {f}{t.focusScaleSuffix}</option>)}
                   </select>
@@ -3138,7 +3190,7 @@ Return plain JSON only:
                     <select value={newGoal.subject} onChange={(e) => setNewGoal((prev) => ({ ...prev, subject: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
                       {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
                     </select>
-                    <input type="date" value={newGoal.targetDateKey} onChange={(e) => setNewGoal((prev) => ({ ...prev, targetDateKey: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
+                    <input type="date" lang={locale} value={newGoal.targetDateKey} onChange={(e) => setNewGoal((prev) => ({ ...prev, targetDateKey: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
                   </div>
                   <button type="submit" className="w-full px-4 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>{t.addGoal}</button>
                 </form>
@@ -3410,7 +3462,7 @@ Return plain JSON only:
                     <select value={newExam.subject} onChange={(e) => setNewExam((prev) => ({ ...prev, subject: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs">
                       {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
                     </select>
-                    <input type="date" value={newExam.dateKey} onChange={(e) => setNewExam((prev) => ({ ...prev, dateKey: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
+                    <input type="date" lang={locale} value={newExam.dateKey} onChange={(e) => setNewExam((prev) => ({ ...prev, dateKey: e.target.value }))} className="px-3 py-2 rounded-xl border border-sky-100 bg-sky-50/60 text-xs" />
                   </div>
                   <button type="submit" className="w-full px-4 py-2 rounded-xl text-xs font-bold text-white" style={{ background: 'linear-gradient(90deg,#0EA5E9,#0284C7)' }}>{t.addExam}</button>
                 </form>

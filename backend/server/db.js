@@ -19,6 +19,7 @@ export const defaultUserPayload = {
   studySessions: [],
   revisions: [],
   exams: [],
+  pomodoro: null,
 };
 
 const SUPABASE_URL = String(process.env.SUPABASE_URL || '').trim();
@@ -141,6 +142,7 @@ function cloneDefaultPayload() {
     studySessions: [],
     revisions: [],
     exams: [],
+    pomodoro: null,
   };
 }
 

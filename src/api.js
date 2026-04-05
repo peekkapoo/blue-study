@@ -115,3 +115,7 @@ export const pushApi = {
     token,
   ),
 };
+
+export const aiApi = {
+  chat: (payload) => apiRequest('/api/ai/chat', { method: 'POST', body: JSON.stringify(payload) }),
+};
