@@ -62,6 +62,7 @@ import {
   subscribeToPush,
   unsubscribeFromPush,
 } from './push';
+import BrandMark from './BrandMark';
 
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');`;
 
@@ -254,8 +255,6 @@ const FOOTER_LINKS = [
   { label: 'LinkedIn', href: 'https://www.linkedin.com/in/ngtrung05/', icon: FaLinkedinIn, iconClass: 'text-[#0A66C2]' },
   { label: 'GitHub', href: 'https://github.com/peekkapoo', icon: FaGithub, iconClass: 'text-slate-700' },
 ];
-
-const BRAND_LOGO_SRC = '/blue-logo.png';
 
 const AUTH_TOKEN_KEY = 'bs3-auth-token';
 const AUTH_USER_KEY = 'bs3-auth-user';
@@ -2820,9 +2819,7 @@ Return plain JSON only:
         style={{ background: 'linear-gradient(170deg, #0A1628 0%, #0F2244 100%)' }}
       >
         <div className="hidden md:flex flex-col items-center gap-1.5">
-          <div className="w-10 h-10 rounded-[14px] overflow-hidden shadow-lg ring-1 ring-sky-300/40">
-            <img src={BRAND_LOGO_SRC} alt="Blue Study logo" className="w-full h-full object-cover" />
-          </div>
+          <BrandMark className="w-10 h-10 rounded-[14px] shadow-lg" iconSize={19} strokeWidth={2.5} ariaLabel="Blue Study logo" />
           <span className="syne text-[9px] font-bold text-sky-400 tracking-[3px] uppercase">{t.brandShort}</span>
         </div>
 

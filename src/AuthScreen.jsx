@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Languages, Moon, Sun } from 'lucide-react';
 import { authApi, IS_API_BASE_CONFIGURED } from './api';
 import { DEFAULT_LANG, LANG_META } from './App.i18n';
+import BrandMark from './BrandMark';
 
 const AUTH_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
@@ -44,8 +45,6 @@ const AUTH_STYLES = `
 const boxStyle = {
   background: 'linear-gradient(150deg, #07162A 0%, #0E2B60 50%, #0B3D85 100%)',
 };
-
-const BRAND_LOGO_SRC = '/blue-logo.png';
 
 const DISPLAY_NAME_TAKEN_MESSAGE = 'Display name is already in use. Please choose another one.';
 const DISPLAY_NAME_DUPLICATED_LOGIN_MESSAGE = 'Display name is duplicated. Use email to sign in.';
@@ -239,10 +238,10 @@ export default function AuthScreen({
             <div className="absolute -bottom-24 left-[-40px] w-48 h-48 rounded-full bg-cyan-400/25 blur-2xl" />
             <div className="relative z-10">
               <div className="inline-flex items-center gap-3">
-                <img
-                  src={BRAND_LOGO_SRC}
-                  alt={`${t.authBrand} logo`}
-                  className="w-11 h-11 rounded-2xl object-cover ring-1 ring-sky-200/40 shadow-lg shadow-sky-900/30"
+                <BrandMark
+                  className="w-11 h-11 rounded-2xl ring-1 ring-sky-200/40 shadow-lg shadow-sky-900/30"
+                  iconSize={22}
+                  ariaLabel={`${t.authBrand} logo`}
                 />
                 <p className="text-[11px] uppercase tracking-[4px] text-sky-200 font-semibold">{t.authBrand}</p>
               </div>
@@ -268,10 +267,11 @@ export default function AuthScreen({
             <div className="flex items-center justify-between">
               <div>
                 <div className="inline-flex items-center gap-2.5">
-                  <img
-                    src={BRAND_LOGO_SRC}
-                    alt={`${t.authBrand} logo`}
-                    className={`w-8 h-8 rounded-xl object-cover ring-1 ${isDarkTheme ? 'ring-sky-400/40' : 'ring-sky-100'}`}
+                  <BrandMark
+                    className={`w-8 h-8 rounded-xl ring-1 ${isDarkTheme ? 'ring-sky-400/40' : 'ring-sky-100'}`}
+                    iconSize={16}
+                    strokeWidth={2.4}
+                    ariaLabel={`${t.authBrand} logo`}
                   />
                   <p className="text-[11px] uppercase tracking-[3px] text-slate-400">{t.authBrand}</p>
                 </div>
