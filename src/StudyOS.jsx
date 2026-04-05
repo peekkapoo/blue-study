@@ -1684,7 +1684,17 @@ export default function StudyOS() {
 
   const laggingSubjects = useMemo(() => subjectProgress.slice().sort((a, b) => a.score - b.score).slice(0, 2), [subjectProgress]);
 
-  const todayTasks = tasks.filter((task) => task.dateKey === todayKey && !task.archived);
+  const todayTasks = useMemo(
+    () => tasks.filter((task) => task.dateKey === todayKey && !task.archived),
+    [tasks, todayKey],
+  );
+  const todayChecklistTasks = useMemo(
+    () => todayTasks.slice().sort((a, b) => {
+      if (a.completed !== b.completed) return a.completed ? 1 : -1;
+      return (a.time || '').localeCompare(b.time || '');
+    }),
+    [todayTasks],
+  );
   const completedToday = todayTasks.filter((task) => task.completed).length;
   const progress = todayTasks.length ? Math.round((completedToday / todayTasks.length) * 100) : 0;
 
@@ -2528,33 +2538,66 @@ Return plain JSON only:
               </div>
             </div>
 
-            <div data-tutorial="today-rhythm" className="xl:col-span-2 glass rounded-3xl p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="syne font-bold text-[#0A1628]">{t.reflectRhythmTitle}</h3>
-                <TrendingUp size={16} className="text-sky-500" />
+            <div className="xl:order-3 xl:col-span-2 glass rounded-3xl p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <h3 className="syne font-bold text-[#0A1628]">{t.today} {t.taskEngineTitle}</h3>
+                  <span className="text-[10px] font-bold bg-sky-100 text-sky-600 px-2 py-1 rounded-full">{todayChecklistTasks.length} {t.visibleLabel}</span>
+                </div>
+                <button onClick={() => setView('plan')} className="text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">{t.reflectOpenPlanner}</button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="rounded-2xl border border-sky-100 p-4">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{t.reflectLaggingSubjects}</p>
-                  <div className="space-y-2">
+
+              <div className="space-y-2 max-h-[320px] overflow-y-auto scroll">
+                {todayChecklistTasks.map((task) => {
+                  const overdue = !task.completed && task.dueDateKey < todayKey;
+                  return (
+                    <div key={task.id} className={`rounded-xl border p-3 flex items-start gap-3 ${task.completed ? 'bg-slate-50 border-slate-200 opacity-70' : 'bg-white/80 border-sky-100'}`}>
+                      <button
+                        onClick={() => toggleTask(task.id)}
+                        className={`w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0 ${task.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 hover:border-sky-400'}`}
+                        aria-label={t.completeTask}
+                      >
+                        {task.completed && <Check size={11} strokeWidth={3.5} className="text-white" />}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium ${task.completed ? 'strike text-slate-400' : 'text-slate-800'}`}>{getTaskTitle(task)}</p>
+                        <p className="text-[11px] text-slate-500 mt-1">{task.time} · {t.dueLabel} {formatDateFromKey(task.dueDateKey)} · {categoryLabel(task.subject)}</p>
+                        {overdue && <span className="mt-1 inline-flex text-[10px] font-semibold px-2 py-0.5 rounded bg-rose-100 text-rose-700">{t.overdueLabel}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+                {!todayChecklistTasks.length && <p className="text-sm text-slate-500">{t.noTasksYet}</p>}
+              </div>
+            </div>
+
+            <div data-tutorial="today-rhythm" className="xl:order-4 xl:col-span-1 glass rounded-3xl p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="syne text-base font-bold text-[#0A1628]">{t.reflectRhythmTitle}</h3>
+                <TrendingUp size={14} className="text-sky-500" />
+              </div>
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-sky-100 p-3">
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">{t.reflectLaggingSubjects}</p>
+                  <div className="space-y-1.5">
                     {laggingSubjects.map((item) => (
                       <div key={item.subject} className="flex items-center justify-between">
-                        <span className="text-sm font-medium">{categoryLabel(item.subject)}</span>
-                        <span className="text-xs text-slate-500">{item.completion}% · {item.minutes}{t.minutesShort}</span>
+                        <span className="text-xs font-medium">{categoryLabel(item.subject)}</span>
+                        <span className="text-[11px] text-slate-500">{item.completion}% · {item.minutes}{t.minutesShort}</span>
                       </div>
                     ))}
-                    {!laggingSubjects.length && <p className="text-sm text-slate-400">{t.reflectNoData}</p>}
+                    {!laggingSubjects.length && <p className="text-xs text-slate-400">{t.reflectNoData}</p>}
                   </div>
                 </div>
-                <div className="rounded-2xl border border-sky-100 p-4">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{t.reflectWeeklyTrend}</p>
-                  <p className="text-sm text-slate-700">{t.weeklyTasksDoneLabel}: <b>{weeklyStats.thisWeekDone}</b> ({weeklyStats.taskDelta >= 0 ? '+' : ''}{weeklyStats.taskDelta} {t.vsLastWeekLabel})</p>
-                  <p className="text-sm text-slate-700 mt-2">{t.weeklyStudyMinutesLabel}: <b>{weeklyStats.thisWeekMinutes}{t.minutesShort}</b> ({weeklyStats.minuteDelta >= 0 ? '+' : ''}{weeklyStats.minuteDelta})</p>
+                <div className="rounded-2xl border border-sky-100 p-3">
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">{t.reflectWeeklyTrend}</p>
+                  <p className="text-xs text-slate-700">{t.weeklyTasksDoneLabel}: <b>{weeklyStats.thisWeekDone}</b> ({weeklyStats.taskDelta >= 0 ? '+' : ''}{weeklyStats.taskDelta})</p>
+                  <p className="text-xs text-slate-700 mt-1.5">{t.weeklyStudyMinutesLabel}: <b>{weeklyStats.thisWeekMinutes}{t.minutesShort}</b> ({weeklyStats.minuteDelta >= 0 ? '+' : ''}{weeklyStats.minuteDelta})</p>
                 </div>
               </div>
             </div>
 
-            <div data-tutorial="today-risk" className="glass rounded-3xl p-6 shadow-sm space-y-3">
+            <div data-tutorial="today-risk" className="xl:order-5 xl:col-span-3 glass rounded-3xl p-6 shadow-sm space-y-3">
               <h3 className="syne font-bold text-[#0A1628]">{t.reflectRiskRadar}</h3>
               <div className="rounded-xl border border-sky-100 p-3">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t.reflectNeedsReview}</p>
