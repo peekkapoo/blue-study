@@ -704,6 +704,7 @@ export default function StudyOS() {
   const userDataLoadedRef = useRef(false);
   const dragTaskIdRef = useRef(null);
   const preloginSeenRef = useRef(false);
+  const lastTodayKeyRef = useRef(todayKey);
 
   const pomodoroSecondsByMode = useMemo(() => getPomodoroSecondsByMode(pomodoroConfig), [pomodoroConfig]);
   const pushStatusLabel = useMemo(() => {
@@ -1045,6 +1046,29 @@ export default function StudyOS() {
   }, []);
 
   useEffect(() => {
+    const prevTodayKey = lastTodayKeyRef.current;
+    if (prevTodayKey === todayKey) return;
+
+    lastTodayKeyRef.current = todayKey;
+    const nextTodayDate = parseDateKey(todayKey);
+
+    setSelDate((prev) => (toDateKey(prev) === prevTodayKey ? nextTodayDate : prev));
+    setCurMonth((prev) => (toDateKey(prev) === prevTodayKey ? nextTodayDate : prev));
+    setNewTask((prev) => (prev.dueDateKey === prevTodayKey ? { ...prev, dueDateKey: todayKey } : prev));
+    setNewSession((prev) => (prev.dateKey === prevTodayKey ? { ...prev, dateKey: todayKey } : prev));
+    setNewGoal((prev) => {
+      const prevDefaultTargetDateKey = addDays(prevTodayKey, 14);
+      if (prev.targetDateKey !== prevDefaultTargetDateKey) return prev;
+      return { ...prev, targetDateKey: addDays(todayKey, 14) };
+    });
+    setNewExam((prev) => {
+      const prevDefaultExamDateKey = addDays(prevTodayKey, 21);
+      if (prev.dateKey !== prevDefaultExamDateKey) return prev;
+      return { ...prev, dateKey: addDays(todayKey, 21) };
+    });
+  }, [todayKey]);
+
+  useEffect(() => {
     localStorage.setItem('bs3-theme', theme);
   }, [theme]);
 
@@ -1158,13 +1182,14 @@ export default function StudyOS() {
   const addTask = (e) => {
     e?.preventDefault();
     if (!newTask.title.trim()) return;
+    const scheduledDateKey = plannerMode === 'today' ? todayKey : toDateKey(selDate);
     const base = {
       id: Date.now() + Math.random(),
       task: newTask.title.trim(),
       time: newTask.time || '09:00',
       completed: false,
-      dateKey: toDateKey(selDate),
-      dueDateKey: normalizeDateKey(newTask.dueDateKey || toDateKey(selDate)),
+      dateKey: scheduledDateKey,
+      dueDateKey: normalizeDateKey(newTask.dueDateKey || scheduledDateKey),
       subject: normalizeCategory(newTask.subject || 'general'),
       priority: newTask.priority || 'medium',
       recurring: newTask.recurring || 'none',
@@ -1178,7 +1203,7 @@ export default function StudyOS() {
     setNewTask({
       title: '',
       time: '09:00',
-      dueDateKey: toDateKey(selDate),
+      dueDateKey: scheduledDateKey,
       priority: 'medium',
       recurring: 'none',
       duration: 45,
