@@ -207,6 +207,45 @@ const STYLES = `
     text-decoration: line-through;
     text-decoration-color: #94a3b8;
   }
+
+  .today-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: minmax(140px, auto);
+    gap: var(--today-gap, 1.25rem);
+  }
+
+  .today-widget {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+  }
+
+  .today-widget-card {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .today-scroll {
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+
+  @media (min-width: 1280px) {
+    .today-grid {
+      grid-template-columns: repeat(var(--today-columns, 3), minmax(0, 1fr));
+      grid-auto-rows: var(--today-row-height, 128px);
+    }
+
+    .today-widget {
+      grid-column: span var(--today-col-span, 1);
+      grid-row: span var(--today-row-span, 1);
+    }
+  }
 `;
 
 const FOOTER_LINKS = [
@@ -390,7 +429,12 @@ const DEFAULT_POMODORO_CONFIG = {
 };
 
 const clampNumber = (value, min, max, fallback) => {
-  const n = Number(value);
+  let n;
+  try {
+    n = Number(value);
+  } catch {
+    return fallback;
+  }
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, Math.round(n)));
 };
@@ -448,6 +492,101 @@ const SHORT_DATE_TIME_OPTIONS = {
   year: 'numeric',
   hour: '2-digit',
   minute: '2-digit',
+};
+const TODAY_GRID_MIN_COLUMNS = 2;
+const TODAY_GRID_MAX_COLUMNS = 6;
+const TODAY_GRID_DEFAULT_COLUMNS = 3;
+const TODAY_GRID_MIN_ROW_HEIGHT = 96;
+const TODAY_GRID_MAX_ROW_HEIGHT = 220;
+const TODAY_GRID_DEFAULT_ROW_HEIGHT = 128;
+
+const TODAY_WIDGET_CONFIG = {
+  dashboard: { order: 0, w: 2, h: 2, minW: 1, maxW: 4, minH: 2, maxH: 4 },
+  decision: { order: 1, w: 1, h: 2, minW: 1, maxW: 3, minH: 2, maxH: 4 },
+  checklist: { order: 2, w: 2, h: 2, minW: 1, maxW: 4, minH: 2, maxH: 5 },
+  rhythm: { order: 3, w: 1, h: 2, minW: 1, maxW: 3, minH: 2, maxH: 4 },
+  risk: { order: 4, w: 3, h: 2, minW: 1, maxW: 6, minH: 2, maxH: 4 },
+  plan: { order: 5, w: 1, h: 2, minW: 1, maxW: 3, minH: 2, maxH: 4 },
+  learn: { order: 6, w: 1, h: 2, minW: 1, maxW: 3, minH: 2, maxH: 4 },
+  library: { order: 7, w: 1, h: 2, minW: 1, maxW: 3, minH: 2, maxH: 4 },
+};
+
+const TODAY_WIDGET_IDS = Object.keys(TODAY_WIDGET_CONFIG);
+
+const clampTodayWidgetSize = (widgetId, axis, value, gridColumns) => {
+  const cfg = TODAY_WIDGET_CONFIG[widgetId] || TODAY_WIDGET_CONFIG.dashboard;
+  if (axis === 'w') {
+    const maxWidth = Math.max(cfg.minW, Math.min(cfg.maxW, gridColumns));
+    return clampNumber(value, cfg.minW, maxWidth, Math.min(cfg.w, maxWidth));
+  }
+  return clampNumber(value, cfg.minH, cfg.maxH, cfg.h);
+};
+
+const createDefaultTodayLayout = () => {
+  const base = {
+    gridColumns: TODAY_GRID_DEFAULT_COLUMNS,
+    rowHeight: TODAY_GRID_DEFAULT_ROW_HEIGHT,
+  };
+
+  TODAY_WIDGET_IDS.forEach((id) => {
+    const cfg = TODAY_WIDGET_CONFIG[id];
+    base[id] = {
+      visible: true,
+      order: cfg.order,
+      w: Math.min(cfg.w, TODAY_GRID_DEFAULT_COLUMNS),
+      h: cfg.h,
+    };
+  });
+
+  return base;
+};
+
+const normalizeTodayLayout = (layout) => {
+  const raw = layout && typeof layout === 'object' ? layout : {};
+  const legacyWidgets = raw.widgets && typeof raw.widgets === 'object' ? raw.widgets : raw;
+  const gridColumns = clampNumber(
+    raw.gridColumns ?? raw.grid?.columns,
+    TODAY_GRID_MIN_COLUMNS,
+    TODAY_GRID_MAX_COLUMNS,
+    TODAY_GRID_DEFAULT_COLUMNS,
+  );
+  const rowHeight = clampNumber(
+    raw.rowHeight ?? raw.grid?.rowHeight,
+    TODAY_GRID_MIN_ROW_HEIGHT,
+    TODAY_GRID_MAX_ROW_HEIGHT,
+    TODAY_GRID_DEFAULT_ROW_HEIGHT,
+  );
+
+  const ordered = TODAY_WIDGET_IDS.map((id, index) => {
+    const source = id === 'checklist' && !legacyWidgets.checklist ? legacyWidgets.task : legacyWidgets[id];
+    const item = source && typeof source === 'object' ? source : {};
+    const parsedOrder = Number(item.order);
+    const widthSeed = item.w ?? item.width ?? item.colSpan;
+    const heightSeed = item.h ?? item.height ?? item.rowSpan;
+    return {
+      id,
+      visible: item.visible !== false,
+      order: Number.isFinite(parsedOrder) ? parsedOrder : index,
+      w: clampTodayWidgetSize(id, 'w', widthSeed, gridColumns),
+      h: clampTodayWidgetSize(id, 'h', heightSeed, gridColumns),
+    };
+  }).sort((a, b) => a.order - b.order);
+
+  const normalized = {
+    gridColumns,
+    rowHeight,
+  };
+
+  ordered.forEach((item, index) => {
+    normalized[item.id] = {
+      visible: item.visible,
+      order: index,
+      w: item.w,
+      h: item.h,
+    };
+  });
+
+  return normalized;
 };
 const isNumericDateParts = (options = SHORT_DATE_OPTIONS) => {
   const hasNumericDay = options?.day === '2-digit' || options?.day === 'numeric';
@@ -650,6 +789,8 @@ export default function StudyOS() {
   const [tasks, setTasks] = useState(
     INITIAL_TASK_SEEDS.map((task) => normalizeTask({ ...task, task: seedTaskText(task.seedKey), dateKey: todayKey }, todayKey)),
   );
+  const [todayLayout, setTodayLayout] = useState(() => createDefaultTodayLayout());
+  const [todayLayoutEditorOpen, setTodayLayoutEditorOpen] = useState(false);
   const [goals, setGoals] = useState([]);
   const [studySessions, setStudySessions] = useState([]);
   const [revisions, setRevisions] = useState([]);
@@ -713,6 +854,37 @@ export default function StudyOS() {
   const [pomodoroRunning, setPomodoroRunning] = useState(false);
   const [pomodoroCompleted, setPomodoroCompleted] = useState(initialPomodoro.completed);
   const [pomodoroFocusStats, setPomodoroFocusStats] = useState(initialPomodoro.stats);
+
+  const todayWidgetLabels = useMemo(() => ({
+    dashboard: t.reflectActionDashboard || 'Today Dashboard',
+    decision: t.reflectDecisionTitle || 'Today Task Engine',
+    rhythm: t.reflectRhythmTitle || 'Subject Rhythm',
+    checklist: t.todayChecklistTitle || 'Today Checklist',
+    risk: t.reflectRiskRadar || 'Risk Radar',
+    plan: t.todayPlanWidgetTitle || 'Plan Snapshot',
+    learn: t.todayLearnWidgetTitle || 'Learn Snapshot',
+    library: t.todayLibraryWidgetTitle || 'Library Snapshot',
+  }), [t]);
+  const todayGridColumns = clampNumber(
+    todayLayout.gridColumns,
+    TODAY_GRID_MIN_COLUMNS,
+    TODAY_GRID_MAX_COLUMNS,
+    TODAY_GRID_DEFAULT_COLUMNS,
+  );
+  const todayGridRowHeight = clampNumber(
+    todayLayout.rowHeight,
+    TODAY_GRID_MIN_ROW_HEIGHT,
+    TODAY_GRID_MAX_ROW_HEIGHT,
+    TODAY_GRID_DEFAULT_ROW_HEIGHT,
+  );
+  const orderedTodayWidgets = useMemo(
+    () => TODAY_WIDGET_IDS.slice().sort((a, b) => (todayLayout[a]?.order ?? 0) - (todayLayout[b]?.order ?? 0)),
+    [todayLayout],
+  );
+  const visibleTodayWidgets = useMemo(
+    () => orderedTodayWidgets.filter((id) => todayLayout[id]?.visible !== false),
+    [orderedTodayWidgets, todayLayout],
+  );
 
   const [undoState, setUndoState] = useState(null);
 
@@ -1007,6 +1179,7 @@ export default function StudyOS() {
     setPomodoroRunning(false);
     setPomodoroCompleted(pomodoroSnapshot.completed);
     setPomodoroFocusStats(pomodoroSnapshot.stats);
+    setTodayLayout(normalizeTodayLayout(data.todayLayout));
     userDataLoadedRef.current = true;
   }, [todayKey]);
 
@@ -1098,6 +1271,12 @@ export default function StudyOS() {
   }, [theme]);
 
   useEffect(() => {
+    if (view !== 'today') {
+      setTodayLayoutEditorOpen(false);
+    }
+  }, [view]);
+
+  useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory, aiOpen]);
 
@@ -1121,6 +1300,7 @@ export default function StudyOS() {
       setPomodoroRunning(false);
       setPomodoroCompleted(pomodoroSnapshot.completed);
       setPomodoroFocusStats(pomodoroSnapshot.stats);
+      setTodayLayout(normalizeTodayLayout(saved.todayLayout));
     } catch {
       return undefined;
     }
@@ -1145,8 +1325,9 @@ export default function StudyOS() {
         completed: pomodoroCompleted,
         stats: pomodoroFocusStats,
       },
+      todayLayout,
     }));
-  }, [authToken, lang, notes, tasks, categories, goals, studySessions, revisions, exams, pomodoroConfig, pomodoroMode, pomodoroSecondsLeft, pomodoroCompleted, pomodoroFocusStats]);
+  }, [authToken, lang, notes, tasks, categories, goals, studySessions, revisions, exams, pomodoroConfig, pomodoroMode, pomodoroSecondsLeft, pomodoroCompleted, pomodoroFocusStats, todayLayout]);
 
   useEffect(() => {
     if (!authToken || !authReady || !userDataLoadedRef.current) return;
@@ -1167,10 +1348,11 @@ export default function StudyOS() {
           completed: pomodoroCompleted,
           stats: pomodoroFocusStats,
         },
+        todayLayout,
       }).catch(() => {});
     }, 600);
     return () => clearTimeout(timer);
-  }, [authToken, authReady, notes, tasks, categories, lang, goals, studySessions, revisions, exams, pomodoroConfig, pomodoroMode, pomodoroSecondsLeft, pomodoroCompleted, pomodoroFocusStats]);
+  }, [authToken, authReady, notes, tasks, categories, lang, goals, studySessions, revisions, exams, pomodoroConfig, pomodoroMode, pomodoroSecondsLeft, pomodoroCompleted, pomodoroFocusStats, todayLayout]);
 
   const calDays = useMemo(() => {
     const y = curMonth.getFullYear();
@@ -1202,6 +1384,102 @@ export default function StudyOS() {
     setCategories((prev) => prev.filter((c) => c !== cat));
     setTasks((prev) => prev.map((task) => task.subject === cat ? { ...task, subject: 'general', updatedAt: isoNow() } : task));
     setNotes((prev) => prev.map((note) => note.category === cat ? { ...note, category: 'general', updatedAt: isoNow() } : note));
+  };
+
+  const toggleTodayWidget = (widgetId) => {
+    if (!TODAY_WIDGET_IDS.includes(widgetId)) return;
+
+    setTodayLayout((prev) => {
+      const next = normalizeTodayLayout(prev);
+      const currentlyVisible = TODAY_WIDGET_IDS.filter((id) => next[id].visible !== false);
+      const isVisible = next[widgetId].visible !== false;
+      if (isVisible && currentlyVisible.length <= 1) {
+        return prev;
+      }
+      next[widgetId] = { ...next[widgetId], visible: !isVisible };
+      return next;
+    });
+  };
+
+  const updateTodayGridColumns = (value) => {
+    setTodayLayout((prev) => {
+      const next = normalizeTodayLayout(prev);
+      const columns = clampNumber(
+        value,
+        TODAY_GRID_MIN_COLUMNS,
+        TODAY_GRID_MAX_COLUMNS,
+        TODAY_GRID_DEFAULT_COLUMNS,
+      );
+      if (columns === next.gridColumns) return prev;
+
+      next.gridColumns = columns;
+      TODAY_WIDGET_IDS.forEach((id) => {
+        const current = next[id] || {};
+        const nextWidth = clampTodayWidgetSize(id, 'w', current.w, columns);
+        if (nextWidth !== current.w) {
+          next[id] = { ...current, w: nextWidth };
+        }
+      });
+      return next;
+    });
+  };
+
+  const updateTodayGridRowHeight = (value) => {
+    setTodayLayout((prev) => {
+      const next = normalizeTodayLayout(prev);
+      const rowHeight = clampNumber(
+        value,
+        TODAY_GRID_MIN_ROW_HEIGHT,
+        TODAY_GRID_MAX_ROW_HEIGHT,
+        TODAY_GRID_DEFAULT_ROW_HEIGHT,
+      );
+      if (rowHeight === next.rowHeight) return prev;
+      next.rowHeight = rowHeight;
+      return next;
+    });
+  };
+
+  const moveTodayWidget = (widgetId, direction) => {
+    if (!TODAY_WIDGET_IDS.includes(widgetId)) return;
+    const step = direction === 'up' ? -1 : 1;
+
+    setTodayLayout((prev) => {
+      const next = normalizeTodayLayout(prev);
+      const ordered = TODAY_WIDGET_IDS.slice().sort((a, b) => next[a].order - next[b].order);
+      const index = ordered.indexOf(widgetId);
+      const targetIndex = index + step;
+      if (index < 0 || targetIndex < 0 || targetIndex >= ordered.length) {
+        return prev;
+      }
+      const swapId = ordered[targetIndex];
+      const currentOrder = next[widgetId].order;
+      next[widgetId] = { ...next[widgetId], order: next[swapId].order };
+      next[swapId] = { ...next[swapId], order: currentOrder };
+      return next;
+    });
+  };
+
+  const resizeTodayWidget = (widgetId, axis, delta) => {
+    if (!TODAY_WIDGET_IDS.includes(widgetId)) return;
+    if (!['w', 'h'].includes(axis)) return;
+
+    setTodayLayout((prev) => {
+      const next = normalizeTodayLayout(prev);
+      const current = next[widgetId] || {};
+      const nextValue = clampTodayWidgetSize(
+        widgetId,
+        axis,
+        Number(current[axis] || 1) + delta,
+        next.gridColumns,
+      );
+      if (nextValue === current[axis]) return prev;
+      next[widgetId] = { ...current, [axis]: nextValue };
+      return next;
+    });
+  };
+
+  const resetTodayLayout = () => {
+    setTodayLayout(createDefaultTodayLayout());
   };
 
   const addTask = (e) => {
@@ -1709,6 +1987,14 @@ export default function StudyOS() {
       .slice(0, 6);
   }, [tasks, todayKey]);
 
+  const planSnapshotTasks = useMemo(() => {
+    const horizon = addDays(todayKey, 7);
+    return tasks
+      .filter((task) => !task.archived && !task.completed && task.dateKey >= todayKey && task.dateKey <= horizon)
+      .sort((a, b) => (a.dateKey + a.time).localeCompare(b.dateKey + b.time))
+      .slice(0, 4);
+  }, [tasks, todayKey]);
+
   const upcomingExams = useMemo(() => {
     return exams
       .map((exam) => ({ ...exam, daysLeft: Math.ceil((parseDateKey(exam.dateKey) - parseDateKey(todayKey)) / 86400000) }))
@@ -1756,6 +2042,36 @@ export default function StudyOS() {
       minuteDelta: thisWeekMinutes - prevWeekMinutes,
     };
   }, [tasks, studySessions, now]);
+
+  const openGoalsCount = useMemo(
+    () => goals.filter((goal) => !goal.completed).length,
+    [goals],
+  );
+  const completedGoalsCount = goals.length - openGoalsCount;
+  const todaySessionsCount = useMemo(
+    () => studySessions.filter((session) => session.dateKey === todayKey).length,
+    [studySessions, todayKey],
+  );
+
+  const activeNotesCount = useMemo(
+    () => notes.filter((note) => !note.archived).length,
+    [notes],
+  );
+  const pinnedNotesCount = useMemo(
+    () => notes.filter((note) => !note.archived && note.pinned).length,
+    [notes],
+  );
+  const notesWithFlashcardsCount = useMemo(
+    () => notes.filter((note) => !note.archived && (note.flashcards || []).length > 0).length,
+    [notes],
+  );
+  const recentLibraryNotes = useMemo(() => {
+    return notes
+      .filter((note) => !note.archived)
+      .slice()
+      .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+      .slice(0, 4);
+  }, [notes]);
 
   const nextWeekConflicts = useMemo(() => {
     const nextWeekStart = startOfWeek(now);
@@ -2184,6 +2500,306 @@ Return plain JSON only:
   const selectedNoteBacklinks = selectedNote ? getBacklinkTitles(selectedNote, notes, t.untitledNote) : [];
 
   const undoLabel = undoState?.type?.includes('task') ? t.undoTaskDeleted : t.undoNoteDeleted;
+  const customizeTodayLabel = t.todayCustomizeAction || 'Customize Today';
+  const customizeTodayTitle = t.todayCustomizeTitle || 'Customize Today Layout';
+  const customizeTodayHint = t.todayCustomizeHint || 'Show, hide, and reorder cards for your Today home.';
+  const doneLabel = t.done || t.save || 'Done';
+  const resetLabel = t.todayCustomizeReset || 'Reset';
+  const shownLabel = t.todayWidgetShown || 'Shown';
+  const hiddenLabel = t.todayWidgetHidden || 'Hidden';
+  const gridColumnsLabel = t.todayGridColumnsLabel || 'Grid columns';
+  const rowHeightLabel = t.todayRowHeightLabel || 'Row height';
+  const widgetWidthLabel = t.todayWidgetWidthLabel || 'Width';
+  const widgetHeightLabel = t.todayWidgetHeightLabel || 'Height';
+  const resizeNarrowLabel = t.todayResizeNarrow || 'Narrow';
+  const resizeWideLabel = t.todayResizeWide || 'Wider';
+  const resizeShortLabel = t.todayResizeShort || 'Shorter';
+  const resizeTallLabel = t.todayResizeTall || 'Taller';
+  const openPlanLabel = t.todayOpenPlan || t.navPlan || 'Open Plan';
+  const openLearnLabel = t.todayOpenLearn || t.navLearn || 'Open Learn';
+  const openLibraryLabel = t.todayOpenLibrary || t.navLibrary || 'Open Library';
+  const visibleWidgetCount = visibleTodayWidgets.length;
+
+  const renderTodayWidget = (widgetId) => {
+    if (widgetId === 'dashboard') {
+      return (
+        <div data-tutorial="today-dashboard" className="today-widget-card rounded-3xl p-6 md:p-8 text-white relative overflow-hidden shadow-2xl shadow-blue-950/25" style={{ background: 'linear-gradient(145deg, #0A1628 0%, #0F2A5F 60%, #0F3D7A 100%)' }}>
+          <div className="relative z-10 today-scroll flex-1 scroll">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse block" />
+              <span className="text-[10px] font-bold text-sky-300 uppercase tracking-[2px]">{t.reflectActionDashboard}</span>
+            </div>
+            <h2 className="syne text-5xl font-bold leading-none">{progress}<span className="text-2xl text-blue-300">%</span></h2>
+            <p className="text-sky-200 text-sm mt-1 mb-5">{completedToday}/{todayTasks.length} {t.reflectTodayTaskSuffix}</p>
+
+            <div className="w-full h-2 rounded-full overflow-hidden mb-6" style={{ background: 'rgba(255,255,255,0.1)' }}>
+              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${progress}%`, background: 'linear-gradient(90deg, #38BDF8, #06B6D4)' }} />
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <Stat label={t.statOverdue} value={overdueTasks.length} />
+              <Stat label={t.statReviewDue} value={reviewDueItems.length} />
+              <Stat label={t.statExamSoon} value={upcomingExams.length ? `${upcomingExams[0].daysLeft}d` : '-'} />
+            </div>
+          </div>
+          <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full opacity-20" style={{ background: 'radial-gradient(circle, #38BDF8, transparent)' }} />
+          <div className="absolute right-12 -bottom-10 w-40 h-40 rounded-full opacity-15" style={{ background: 'radial-gradient(circle, #06B6D4, transparent)' }} />
+        </div>
+      );
+    }
+
+    if (widgetId === 'decision') {
+      return (
+        <div data-tutorial="today-decision" className="today-widget-card glass rounded-3xl p-5 shadow-sm">
+          <div className="today-scroll flex-1 space-y-3 scroll">
+            <h3 className="syne font-bold text-[#0A1628]">{t.reflectDecisionTitle}</h3>
+            <div className="rounded-xl border border-sky-100 p-3">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-sky-600">{t.reflectWhatFirst}</p>
+              {nextTaskRecommendation ? (
+                <>
+                  <p className="font-semibold text-sm mt-1">{getTaskTitle(nextTaskRecommendation)}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{t.dueLabel} {formatDateFromKey(nextTaskRecommendation.dueDateKey)} · {priorityLabel(nextTaskRecommendation.priority)}</p>
+                  <button onClick={() => setView('plan')} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">{t.reflectOpenPlanner}</button>
+                </>
+              ) : <p className="text-sm text-slate-500 mt-1">{t.reflectNoOpenTasks}</p>}
+            </div>
+
+            <div className="rounded-xl border border-rose-100 p-3">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-rose-600">{t.reflectOverdueTasks}</p>
+              <p className="text-2xl syne">{overdueTasks.length}</p>
+              <button onClick={() => { setView('plan'); setTaskFilters((prev) => ({ ...prev, overdueOnly: true })); }} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-rose-100 text-rose-700 font-semibold">{t.reflectHandleNow}</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (widgetId === 'checklist') {
+      return (
+        <div className="today-widget-card glass rounded-3xl p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div className="flex items-center gap-2">
+              <h3 className="syne font-bold text-[#0A1628]">{t.today} {t.taskEngineTitle}</h3>
+              <span className="text-[10px] font-bold bg-sky-100 text-sky-600 px-2 py-1 rounded-full">{todayChecklistTasks.length} {t.visibleLabel}</span>
+            </div>
+            <button onClick={() => setView('plan')} className="text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">{t.reflectOpenPlanner}</button>
+          </div>
+
+          <div className="today-scroll flex-1 space-y-2 scroll">
+            {todayChecklistTasks.map((task) => {
+              const overdue = !task.completed && task.dueDateKey < todayKey;
+              return (
+                <div key={task.id} className={`rounded-xl border p-3 flex items-start gap-3 ${task.completed ? 'bg-slate-50 border-slate-200 opacity-70' : 'bg-white/80 border-sky-100'}`}>
+                  <button
+                    onClick={() => toggleTask(task.id)}
+                    className={`w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0 ${task.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 hover:border-sky-400'}`}
+                    aria-label={t.completeTask}
+                  >
+                    {task.completed && <Check size={11} strokeWidth={3.5} className="text-white" />}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium ${task.completed ? 'strike text-slate-400' : 'text-slate-800'}`}>{getTaskTitle(task)}</p>
+                    <p className="text-[11px] text-slate-500 mt-1">{task.time} · {t.dueLabel} {formatDateFromKey(task.dueDateKey)} · {categoryLabel(task.subject)}</p>
+                    {overdue && <span className="mt-1 inline-flex text-[10px] font-semibold px-2 py-0.5 rounded bg-rose-100 text-rose-700">{t.overdueLabel}</span>}
+                  </div>
+                </div>
+              );
+            })}
+            {!todayChecklistTasks.length && <p className="text-sm text-slate-500">{t.noTasksYet}</p>}
+          </div>
+        </div>
+      );
+    }
+
+    if (widgetId === 'rhythm') {
+      return (
+        <div data-tutorial="today-rhythm" className="today-widget-card glass rounded-3xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="syne text-base font-bold text-[#0A1628]">{t.reflectRhythmTitle}</h3>
+            <TrendingUp size={14} className="text-sky-500" />
+          </div>
+          <div className="today-scroll flex-1 space-y-3 scroll">
+            <div className="rounded-2xl border border-sky-100 p-3">
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">{t.reflectLaggingSubjects}</p>
+              <div className="space-y-1.5">
+                {laggingSubjects.map((item) => (
+                  <div key={item.subject} className="flex items-center justify-between">
+                    <span className="text-xs font-medium">{categoryLabel(item.subject)}</span>
+                    <span className="text-[11px] text-slate-500">{item.completion}% · {item.minutes}{t.minutesShort}</span>
+                  </div>
+                ))}
+                {!laggingSubjects.length && <p className="text-xs text-slate-400">{t.reflectNoData}</p>}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-sky-100 p-3">
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">{t.reflectWeeklyTrend}</p>
+              <p className="text-xs text-slate-700">{t.weeklyTasksDoneLabel}: <b>{weeklyStats.thisWeekDone}</b> ({weeklyStats.taskDelta >= 0 ? '+' : ''}{weeklyStats.taskDelta})</p>
+              <p className="text-xs text-slate-700 mt-1.5">{t.weeklyStudyMinutesLabel}: <b>{weeklyStats.thisWeekMinutes}{t.minutesShort}</b> ({weeklyStats.minuteDelta >= 0 ? '+' : ''}{weeklyStats.minuteDelta})</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (widgetId === 'risk') {
+      return (
+        <div data-tutorial="today-risk" className="today-widget-card glass rounded-3xl p-5 shadow-sm">
+          <h3 className="syne font-bold text-[#0A1628]">{t.reflectRiskRadar}</h3>
+          <div className="today-scroll flex-1 space-y-3 scroll">
+            <div className="rounded-xl border border-sky-100 p-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t.reflectNeedsReview}</p>
+              <p className="text-2xl syne">{reviewDueItems.length}</p>
+              <button onClick={() => setView('library')} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">{t.reflectReviewNow}</button>
+            </div>
+            <div className="rounded-xl border border-sky-100 p-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t.reflectNextWeekConflicts}</p>
+              {nextWeekConflicts.length ? nextWeekConflicts.map((item) => (
+                <p key={item.dateKey} className="text-sm mt-1">{formatDateFromKey(item.dateKey)} · {item.minutes}{t.minutesShort}</p>
+              )) : <p className="text-sm text-slate-500 mt-1">{t.reflectNoLargeConflicts}</p>}
+            </div>
+            <div className="rounded-xl border border-sky-100 p-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t.examCountdownTitle}</p>
+              {upcomingExams.slice(0, 2).map((exam) => (
+                <p key={exam.id} className="text-sm mt-1">{exam.title} · {exam.daysLeft} {t.reflectDays}</p>
+              ))}
+              {!upcomingExams.length && <p className="text-sm text-slate-500 mt-1">{t.reflectNoExam}</p>}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (widgetId === 'plan') {
+      return (
+        <div className="today-widget-card glass rounded-3xl p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h3 className="syne font-bold text-[#0A1628]">{todayWidgetLabels.plan}</h3>
+            <button onClick={() => setView('plan')} className="text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">{openPlanLabel}</button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="rounded-xl border border-sky-100 p-2 bg-sky-50/60">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">{t.overdueLabel}</p>
+              <p className="syne text-xl text-[#0A1628]">{overdueTasks.length}</p>
+            </div>
+            <div className="rounded-xl border border-sky-100 p-2 bg-sky-50/60">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">7{t.daysShort}</p>
+              <p className="syne text-xl text-[#0A1628]">{planSnapshotTasks.length}</p>
+            </div>
+            <div className="rounded-xl border border-sky-100 p-2 bg-sky-50/60">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">{t.weekDrag}</p>
+              <p className="syne text-xl text-[#0A1628]">{nextWeekConflicts.length}</p>
+            </div>
+          </div>
+
+          <div className="today-scroll flex-1 space-y-2 scroll">
+            {planSnapshotTasks.map((task) => (
+              <div key={task.id} className="rounded-xl border border-sky-100 p-2.5 bg-white/80">
+                <p className="text-sm font-semibold truncate">{getTaskTitle(task)}</p>
+                <p className="text-[11px] text-slate-500 mt-1">{formatDateFromKey(task.dateKey)} · {task.time} · {priorityLabel(task.priority)}</p>
+              </div>
+            ))}
+            {!planSnapshotTasks.length && <p className="text-sm text-slate-500">{t.taskNoUpcoming}</p>}
+          </div>
+        </div>
+      );
+    }
+
+    if (widgetId === 'learn') {
+      return (
+        <div className="today-widget-card glass rounded-3xl p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h3 className="syne font-bold text-[#0A1628]">{todayWidgetLabels.learn}</h3>
+            <button onClick={() => setView('learn')} className="text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">{openLearnLabel}</button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="rounded-xl border border-sky-100 p-2 bg-sky-50/60">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">{t.pomodoroTodayFocus}</p>
+              <p className="syne text-xl text-[#0A1628]">{pomodoroTodayFocusMinutes}</p>
+            </div>
+            <div className="rounded-xl border border-sky-100 p-2 bg-sky-50/60">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">{t.weeklyStudyMinutesLabel}</p>
+              <p className="syne text-xl text-[#0A1628]">{weeklyStats.thisWeekMinutes}</p>
+            </div>
+            <div className="rounded-xl border border-sky-100 p-2 bg-sky-50/60">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">{t.today}</p>
+              <p className="syne text-xl text-[#0A1628]">{todaySessionsCount}</p>
+            </div>
+          </div>
+
+          <div className="today-scroll flex-1 space-y-2 scroll">
+            <div className="rounded-xl border border-sky-100 p-3 bg-white/80">
+              <p className="text-xs font-semibold text-slate-500">{t.goalsTitle}</p>
+              <p className="text-sm mt-1">{openGoalsCount} {t.statusOpen} · {completedGoalsCount} {t.statusDone}</p>
+            </div>
+            <div className="rounded-xl border border-sky-100 p-3 bg-white/80">
+              <p className="text-xs font-semibold text-slate-500">{t.pomodoroCompleted}</p>
+              <p className="text-sm mt-1">{pomodoroCompleted}</p>
+            </div>
+            <div className="rounded-xl border border-sky-100 p-3 bg-white/80">
+              <p className="text-xs font-semibold text-slate-500">{t.reflectWhatFirst}</p>
+              <p className="text-sm mt-1">{nextTaskRecommendation ? getTaskTitle(nextTaskRecommendation) : t.reflectNoOpenTasks}</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (widgetId === 'library') {
+      return (
+        <div className="today-widget-card glass rounded-3xl p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h3 className="syne font-bold text-[#0A1628]">{todayWidgetLabels.library}</h3>
+            <button onClick={() => setView('library')} className="text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">{openLibraryLabel}</button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="rounded-xl border border-sky-100 p-2 bg-sky-50/60">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">{t.notes}</p>
+              <p className="syne text-xl text-[#0A1628]">{activeNotesCount}</p>
+            </div>
+            <div className="rounded-xl border border-sky-100 p-2 bg-sky-50/60">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">{t.reflectNeedsReview}</p>
+              <p className="syne text-xl text-[#0A1628]">{reviewDueItems.length}</p>
+            </div>
+            <div className="rounded-xl border border-sky-100 p-2 bg-sky-50/60">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">{t.flashcardsTitle}</p>
+              <p className="syne text-xl text-[#0A1628]">{notesWithFlashcardsCount}</p>
+            </div>
+          </div>
+
+          <div className="today-scroll flex-1 space-y-2 scroll">
+            {recentLibraryNotes.map((note) => (
+              <div key={note.id} className="rounded-xl border border-sky-100 p-2.5 bg-white/80">
+                <p className="text-sm font-semibold truncate">{getNoteTitle(note) || t.untitledNote}</p>
+                <p className="text-[11px] text-slate-500 mt-1">{formatDateTime(note.updatedAt)} · {(note.tags || []).length} {t.tagsPlaceholderShort}</p>
+              </div>
+            ))}
+            {!recentLibraryNotes.length && <p className="text-sm text-slate-500">{t.noDocsShort}</p>}
+          </div>
+
+          <p className="text-[11px] text-slate-500 mt-2">{pinnedNotesCount} {t.pin}</p>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const safeRenderTodayWidget = (widgetId) => {
+    try {
+      return renderTodayWidget(widgetId);
+    } catch (err) {
+      console.error('Today widget render failed', widgetId, err);
+      return (
+        <div className="today-widget-card glass rounded-3xl p-4 shadow-sm">
+          <p className="text-sm font-semibold text-rose-700">{todayWidgetLabels[widgetId] || widgetId}</p>
+          <p className="text-xs text-slate-500 mt-1">{t.genericError}</p>
+        </div>
+      );
+    }
+  };
 
   return (
     <div className={`mesh-bg ${theme === 'dark' ? 'theme-dark text-slate-100' : 'theme-light text-slate-800'} ${mainEnter ? 'layout-enter' : ''} min-h-screen md:pl-[84px] pb-24 md:pb-0 relative overflow-x-hidden`}>
@@ -2494,128 +3110,234 @@ Return plain JSON only:
         )}
 
         {view === 'today' && (
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 anim-tab">
-            <div data-tutorial="today-dashboard" className="xl:col-span-2 rounded-3xl p-7 md:p-9 text-white relative overflow-hidden shadow-2xl shadow-blue-950/25" style={{ background: 'linear-gradient(145deg, #0A1628 0%, #0F2A5F 60%, #0F3D7A 100%)' }}>
-              <div className="relative z-10">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse block" />
-                  <span className="text-[10px] font-bold text-sky-300 uppercase tracking-[2px]">{t.reflectActionDashboard}</span>
-                </div>
-                <h2 className="syne text-5xl font-bold leading-none">{progress}<span className="text-2xl text-blue-300">%</span></h2>
-                <p className="text-sky-200 text-sm mt-1 mb-5">{completedToday}/{todayTasks.length} {t.reflectTodayTaskSuffix}</p>
-
-                <div className="w-full h-2 rounded-full overflow-hidden mb-6" style={{ background: 'rgba(255,255,255,0.1)' }}>
-                  <div className="h-full rounded-full transition-all duration-700" style={{ width: `${progress}%`, background: 'linear-gradient(90deg, #38BDF8, #06B6D4)' }} />
-                </div>
-
-                <div className="flex gap-3">
-                  <Stat label={t.statOverdue} value={overdueTasks.length} />
-                  <Stat label={t.statReviewDue} value={reviewDueItems.length} />
-                  <Stat label={t.statExamSoon} value={upcomingExams.length ? `${upcomingExams[0].daysLeft}d` : '-'} />
-                </div>
-              </div>
-              <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full opacity-20" style={{ background: 'radial-gradient(circle, #38BDF8, transparent)' }} />
-              <div className="absolute right-12 -bottom-10 w-40 h-40 rounded-full opacity-15" style={{ background: 'radial-gradient(circle, #06B6D4, transparent)' }} />
+          <div className="space-y-4 anim-tab">
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setTodayLayoutEditorOpen(true)}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-white/80 border border-sky-100 text-sky-700 hover:bg-sky-50"
+              >
+                <SlidersHorizontal size={14} />
+                {customizeTodayLabel}
+              </button>
             </div>
 
-            <div data-tutorial="today-decision" className="glass rounded-3xl p-5 space-y-3 shadow-sm">
-              <h3 className="syne font-bold text-[#0A1628]">{t.reflectDecisionTitle}</h3>
-              <div className="rounded-xl border border-sky-100 p-3">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-sky-600">{t.reflectWhatFirst}</p>
-                {nextTaskRecommendation ? (
-                  <>
-                    <p className="font-semibold text-sm mt-1">{getTaskTitle(nextTaskRecommendation)}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">{t.dueLabel} {formatDateFromKey(nextTaskRecommendation.dueDateKey)} · {priorityLabel(nextTaskRecommendation.priority)}</p>
-                    <button onClick={() => setView('plan')} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">{t.reflectOpenPlanner}</button>
-                  </>
-                ) : <p className="text-sm text-slate-500 mt-1">{t.reflectNoOpenTasks}</p>}
-              </div>
-
-              <div className="rounded-xl border border-rose-100 p-3">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-rose-600">{t.reflectOverdueTasks}</p>
-                <p className="text-2xl syne">{overdueTasks.length}</p>
-                <button onClick={() => { setView('plan'); setTaskFilters((prev) => ({ ...prev, overdueOnly: true })); }} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-rose-100 text-rose-700 font-semibold">{t.reflectHandleNow}</button>
-              </div>
-            </div>
-
-            <div className="xl:order-3 xl:col-span-2 glass rounded-3xl p-6 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                <div className="flex items-center gap-2">
-                  <h3 className="syne font-bold text-[#0A1628]">{t.today} {t.taskEngineTitle}</h3>
-                  <span className="text-[10px] font-bold bg-sky-100 text-sky-600 px-2 py-1 rounded-full">{todayChecklistTasks.length} {t.visibleLabel}</span>
-                </div>
-                <button onClick={() => setView('plan')} className="text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">{t.reflectOpenPlanner}</button>
-              </div>
-
-              <div className="space-y-2 max-h-[320px] overflow-y-auto scroll">
-                {todayChecklistTasks.map((task) => {
-                  const overdue = !task.completed && task.dueDateKey < todayKey;
+            <div
+              className="today-grid"
+              style={{
+                '--today-columns': String(todayGridColumns),
+                '--today-row-height': `${todayGridRowHeight}px`,
+                '--today-gap': '1.25rem',
+              }}
+            >
+              {visibleTodayWidgets.map((widgetId) => {
+                try {
+                  const rawLayout = todayLayout[widgetId] || {};
+                  const spanCols = clampTodayWidgetSize(widgetId, 'w', rawLayout.w, todayGridColumns);
+                  const spanRows = clampTodayWidgetSize(widgetId, 'h', rawLayout.h, todayGridColumns);
+                  const widget = safeRenderTodayWidget(widgetId);
+                  if (!widget) return null;
                   return (
-                    <div key={task.id} className={`rounded-xl border p-3 flex items-start gap-3 ${task.completed ? 'bg-slate-50 border-slate-200 opacity-70' : 'bg-white/80 border-sky-100'}`}>
-                      <button
-                        onClick={() => toggleTask(task.id)}
-                        className={`w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0 ${task.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 hover:border-sky-400'}`}
-                        aria-label={t.completeTask}
-                      >
-                        {task.completed && <Check size={11} strokeWidth={3.5} className="text-white" />}
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium ${task.completed ? 'strike text-slate-400' : 'text-slate-800'}`}>{getTaskTitle(task)}</p>
-                        <p className="text-[11px] text-slate-500 mt-1">{task.time} · {t.dueLabel} {formatDateFromKey(task.dueDateKey)} · {categoryLabel(task.subject)}</p>
-                        {overdue && <span className="mt-1 inline-flex text-[10px] font-semibold px-2 py-0.5 rounded bg-rose-100 text-rose-700">{t.overdueLabel}</span>}
+                    <section
+                      key={widgetId}
+                      className="today-widget"
+                      style={{
+                        '--today-col-span': String(spanCols),
+                        '--today-row-span': String(spanRows),
+                      }}
+                    >
+                      {widget}
+                    </section>
+                  );
+                } catch (err) {
+                  console.error('Today widget map failed', widgetId, err);
+                  return (
+                    <section key={widgetId} className="today-widget" style={{ '--today-col-span': '1', '--today-row-span': '2' }}>
+                      <div className="today-widget-card glass rounded-3xl p-4 shadow-sm">
+                        <p className="text-sm font-semibold text-rose-700">{todayWidgetLabels[widgetId] || widgetId}</p>
+                        <p className="text-xs text-slate-500 mt-1">{t.genericError}</p>
+                      </div>
+                    </section>
+                  );
+                }
+              })}
+              {!visibleTodayWidgets.length && (
+                <div className="glass rounded-3xl p-6 text-sm text-slate-500">
+                  {t.noTasksYet}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {todayLayoutEditorOpen && (
+          <div className="fixed inset-0 z-[90]">
+            <button
+              type="button"
+              aria-label={t.close || 'Close'}
+              className="absolute inset-0 bg-slate-950/35 backdrop-blur-[1px]"
+              onClick={() => setTodayLayoutEditorOpen(false)}
+            />
+            <div className="absolute right-4 left-4 md:left-auto md:w-[420px] top-16 md:top-20 rounded-3xl border border-sky-100 bg-white p-5 shadow-2xl space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="syne text-lg font-bold text-[#0A1628]">{customizeTodayTitle}</h3>
+                  <p className="text-xs text-slate-500 mt-1">{customizeTodayHint}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTodayLayoutEditorOpen(false)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-100 text-sky-700"
+                >
+                  {doneLabel}
+                </button>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-2.5 space-y-2">
+                <div>
+                  <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                    <span>{gridColumnsLabel}</span>
+                    <span>{todayGridColumns}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={TODAY_GRID_MIN_COLUMNS}
+                    max={TODAY_GRID_MAX_COLUMNS}
+                    step="1"
+                    value={todayGridColumns}
+                    onChange={(e) => updateTodayGridColumns(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                    <span>{rowHeightLabel}</span>
+                    <span>{todayGridRowHeight}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={TODAY_GRID_MIN_ROW_HEIGHT}
+                    max={TODAY_GRID_MAX_ROW_HEIGHT}
+                    step="8"
+                    value={todayGridRowHeight}
+                    onChange={(e) => updateTodayGridRowHeight(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 max-h-[52vh] overflow-y-auto pr-1">
+                {orderedTodayWidgets.map((widgetId, index) => {
+                  const cfg = TODAY_WIDGET_CONFIG[widgetId] || TODAY_WIDGET_CONFIG.dashboard;
+                  const widgetLayout = todayLayout[widgetId] || {};
+                  const widgetWidth = clampTodayWidgetSize(widgetId, 'w', widgetLayout.w, todayGridColumns);
+                  const widgetHeight = clampTodayWidgetSize(widgetId, 'h', widgetLayout.h, todayGridColumns);
+                  const maxWidth = Math.max(cfg.minW, Math.min(cfg.maxW, todayGridColumns));
+                  const isVisible = todayLayout[widgetId]?.visible !== false;
+                  const disableHide = isVisible && visibleWidgetCount <= 1;
+                  return (
+                    <div key={widgetId} className="rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-2.5 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <label className="flex items-center gap-2 text-sm font-medium text-slate-700 flex-1 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={isVisible}
+                            disabled={disableHide}
+                            onChange={() => toggleTodayWidget(widgetId)}
+                            className="rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                          />
+                          <span className="truncate">{todayWidgetLabels[widgetId] || widgetId}</span>
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${isVisible ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
+                            {isVisible ? shownLabel : hiddenLabel}
+                          </span>
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => moveTodayWidget(widgetId, 'up')}
+                            disabled={index === 0}
+                            className="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-700 disabled:opacity-35"
+                            aria-label="Move up"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveTodayWidget(widgetId, 'down')}
+                            disabled={index === orderedTodayWidgets.length - 1}
+                            className="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-700 disabled:opacity-35"
+                            aria-label="Move down"
+                          >
+                            ↓
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-xl border border-slate-200 bg-white px-2 py-1.5">
+                          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{widgetWidthLabel} {widgetWidth}</p>
+                          <div className="mt-1 flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => resizeTodayWidget(widgetId, 'w', -1)}
+                              disabled={widgetWidth <= cfg.minW}
+                              className="flex-1 px-2 py-1 text-[10px] rounded bg-slate-100 text-slate-700 disabled:opacity-40"
+                            >
+                              {resizeNarrowLabel}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => resizeTodayWidget(widgetId, 'w', 1)}
+                              disabled={widgetWidth >= maxWidth}
+                              className="flex-1 px-2 py-1 text-[10px] rounded bg-sky-100 text-sky-700 disabled:opacity-40"
+                            >
+                              {resizeWideLabel}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200 bg-white px-2 py-1.5">
+                          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{widgetHeightLabel} {widgetHeight}</p>
+                          <div className="mt-1 flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => resizeTodayWidget(widgetId, 'h', -1)}
+                              disabled={widgetHeight <= cfg.minH}
+                              className="flex-1 px-2 py-1 text-[10px] rounded bg-slate-100 text-slate-700 disabled:opacity-40"
+                            >
+                              {resizeShortLabel}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => resizeTodayWidget(widgetId, 'h', 1)}
+                              disabled={widgetHeight >= cfg.maxH}
+                              className="flex-1 px-2 py-1 text-[10px] rounded bg-sky-100 text-sky-700 disabled:opacity-40"
+                            >
+                              {resizeTallLabel}
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   );
                 })}
-                {!todayChecklistTasks.length && <p className="text-sm text-slate-500">{t.noTasksYet}</p>}
               </div>
-            </div>
 
-            <div data-tutorial="today-rhythm" className="xl:order-4 xl:col-span-1 glass rounded-3xl p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="syne text-base font-bold text-[#0A1628]">{t.reflectRhythmTitle}</h3>
-                <TrendingUp size={14} className="text-sky-500" />
-              </div>
-              <div className="space-y-3">
-                <div className="rounded-2xl border border-sky-100 p-3">
-                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">{t.reflectLaggingSubjects}</p>
-                  <div className="space-y-1.5">
-                    {laggingSubjects.map((item) => (
-                      <div key={item.subject} className="flex items-center justify-between">
-                        <span className="text-xs font-medium">{categoryLabel(item.subject)}</span>
-                        <span className="text-[11px] text-slate-500">{item.completion}% · {item.minutes}{t.minutesShort}</span>
-                      </div>
-                    ))}
-                    {!laggingSubjects.length && <p className="text-xs text-slate-400">{t.reflectNoData}</p>}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-sky-100 p-3">
-                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">{t.reflectWeeklyTrend}</p>
-                  <p className="text-xs text-slate-700">{t.weeklyTasksDoneLabel}: <b>{weeklyStats.thisWeekDone}</b> ({weeklyStats.taskDelta >= 0 ? '+' : ''}{weeklyStats.taskDelta})</p>
-                  <p className="text-xs text-slate-700 mt-1.5">{t.weeklyStudyMinutesLabel}: <b>{weeklyStats.thisWeekMinutes}{t.minutesShort}</b> ({weeklyStats.minuteDelta >= 0 ? '+' : ''}{weeklyStats.minuteDelta})</p>
-                </div>
-              </div>
-            </div>
-
-            <div data-tutorial="today-risk" className="xl:order-5 xl:col-span-3 glass rounded-3xl p-6 shadow-sm space-y-3">
-              <h3 className="syne font-bold text-[#0A1628]">{t.reflectRiskRadar}</h3>
-              <div className="rounded-xl border border-sky-100 p-3">
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t.reflectNeedsReview}</p>
-                <p className="text-2xl syne">{reviewDueItems.length}</p>
-                <button onClick={() => setView('library')} className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-sky-100 text-sky-700 font-semibold">{t.reflectReviewNow}</button>
-              </div>
-              <div className="rounded-xl border border-sky-100 p-3">
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t.reflectNextWeekConflicts}</p>
-                {nextWeekConflicts.length ? nextWeekConflicts.map((item) => (
-                  <p key={item.dateKey} className="text-sm mt-1">{formatDateFromKey(item.dateKey)} · {item.minutes}{t.minutesShort}</p>
-                )) : <p className="text-sm text-slate-500 mt-1">{t.reflectNoLargeConflicts}</p>}
-              </div>
-              <div className="rounded-xl border border-sky-100 p-3">
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{t.examCountdownTitle}</p>
-                {upcomingExams.slice(0, 2).map((exam) => (
-                  <p key={exam.id} className="text-sm mt-1">{exam.title} · {exam.daysLeft} {t.reflectDays}</p>
-                ))}
-                {!upcomingExams.length && <p className="text-sm text-slate-500 mt-1">{t.reflectNoExam}</p>}
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={resetTodayLayout}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-200 text-slate-700"
+                >
+                  {resetLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTodayLayoutEditorOpen(false)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-600 text-white"
+                >
+                  {doneLabel}
+                </button>
               </div>
             </div>
           </div>

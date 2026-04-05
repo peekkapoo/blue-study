@@ -93,6 +93,7 @@ function normalizeUserData(body = {}) {
     revisions: ensureArray(body.revisions),
     exams: ensureArray(body.exams),
     pomodoro: ensureObject(body.pomodoro, null),
+    todayLayout: ensureObject(body.todayLayout, null),
   };
 }
 
