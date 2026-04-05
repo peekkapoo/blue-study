@@ -2892,6 +2892,13 @@ Return plain JSON only:
                                       <option value="weekly">{t.recurrenceWeekly}</option>
                                       <option value="monthly">{t.recurrenceMonthly}</option>
                                     </select>
+                                    <select
+                                      value={categories.includes(taskDraft.subject) ? taskDraft.subject : 'general'}
+                                      onChange={(e) => setTaskDraft((prev) => ({ ...prev, subject: e.target.value }))}
+                                      className="px-2 py-1.5 text-xs rounded border border-slate-300"
+                                    >
+                                      {categories.map((cat) => <option key={cat} value={cat}>{categoryLabel(cat)}</option>)}
+                                    </select>
                                   </div>
                                   <div className="flex gap-2 justify-end">
                                     <button onClick={() => { setEditingTaskId(null); setTaskDraft(null); }} className="px-2 py-1 text-xs rounded bg-slate-100">{t.cancel}</button>
