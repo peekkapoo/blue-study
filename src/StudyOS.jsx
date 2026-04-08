@@ -53,6 +53,14 @@ import {
 } from './App.i18n';
 import AuthScreen from './AuthScreen';
 import { aiApi, authApi, pushApi, userDataApi } from './api';
+import { createDefaultMultipleChoicesData, normalizeMultipleChoicesData } from './multipleChoicesSchema';
+import {
+  LearnSubApp,
+  LibrarySubApp,
+  PlanSubApp,
+  QuizSubApp,
+  TodaySubApp,
+} from './subapps';
 import {
   ensureServiceWorker,
   getExistingSubscription,
@@ -607,6 +615,7 @@ const getWorkflowNav = (text) => [
   { id: 'today', label: text.navToday, icon: LayoutDashboard },
   { id: 'plan', label: text.navPlan, icon: CalIcon },
   { id: 'learn', label: text.navLearn, icon: GraduationCap },
+  { id: 'quiz', label: text.navQuiz || 'Multiple Choices', icon: ClipboardList },
   { id: 'library', label: text.navLibrary, icon: BookOpen },
 ];
 
@@ -796,6 +805,7 @@ export default function StudyOS() {
   const [studySessions, setStudySessions] = useState([]);
   const [revisions, setRevisions] = useState([]);
   const [exams, setExams] = useState([]);
+  const [multipleChoicesData, setMultipleChoicesData] = useState(() => createDefaultMultipleChoicesData());
 
   const [newTask, setNewTask] = useState({
     title: '',
@@ -1173,6 +1183,7 @@ export default function StudyOS() {
     setStudySessions(Array.isArray(data.studySessions) ? data.studySessions : []);
     setRevisions(Array.isArray(data.revisions) ? data.revisions : []);
     setExams(Array.isArray(data.exams) ? data.exams : []);
+    setMultipleChoicesData(normalizeMultipleChoicesData(data.multipleChoices));
     const pomodoroSnapshot = normalizePomodoroSnapshot(data.pomodoro, todayKey);
     setPomodoroConfig(pomodoroSnapshot.config);
     setPomodoroMode(pomodoroSnapshot.mode);
@@ -1294,6 +1305,7 @@ export default function StudyOS() {
       if (Array.isArray(saved.studySessions)) setStudySessions(saved.studySessions);
       if (Array.isArray(saved.revisions)) setRevisions(saved.revisions);
       if (Array.isArray(saved.exams)) setExams(saved.exams);
+      setMultipleChoicesData(normalizeMultipleChoicesData(saved.multipleChoices));
       const pomodoroSnapshot = normalizePomodoroSnapshot(saved.pomodoro, todayKey);
       setPomodoroConfig(pomodoroSnapshot.config);
       setPomodoroMode(pomodoroSnapshot.mode);
@@ -1319,6 +1331,7 @@ export default function StudyOS() {
       studySessions,
       revisions,
       exams,
+      multipleChoices: multipleChoicesData,
       pomodoro: {
         config: pomodoroConfig,
         mode: pomodoroMode,
@@ -1328,7 +1341,7 @@ export default function StudyOS() {
       },
       todayLayout,
     }));
-  }, [authToken, lang, notes, tasks, categories, goals, studySessions, revisions, exams, pomodoroConfig, pomodoroMode, pomodoroSecondsLeft, pomodoroCompleted, pomodoroFocusStats, todayLayout]);
+  }, [authToken, lang, notes, tasks, categories, goals, studySessions, revisions, exams, multipleChoicesData, pomodoroConfig, pomodoroMode, pomodoroSecondsLeft, pomodoroCompleted, pomodoroFocusStats, todayLayout]);
 
   useEffect(() => {
     if (!authToken || !authReady || !userDataLoadedRef.current) return;
@@ -1342,6 +1355,7 @@ export default function StudyOS() {
         studySessions,
         revisions,
         exams,
+        multipleChoices: multipleChoicesData,
         pomodoro: {
           config: pomodoroConfig,
           mode: pomodoroMode,
@@ -1353,7 +1367,7 @@ export default function StudyOS() {
       }).catch(() => {});
     }, 600);
     return () => clearTimeout(timer);
-  }, [authToken, authReady, notes, tasks, categories, lang, goals, studySessions, revisions, exams, pomodoroConfig, pomodoroMode, pomodoroSecondsLeft, pomodoroCompleted, pomodoroFocusStats, todayLayout]);
+  }, [authToken, authReady, notes, tasks, categories, lang, goals, studySessions, revisions, exams, multipleChoicesData, pomodoroConfig, pomodoroMode, pomodoroSecondsLeft, pomodoroCompleted, pomodoroFocusStats, todayLayout]);
 
   const calDays = useMemo(() => {
     const y = curMonth.getFullYear();
@@ -3109,7 +3123,8 @@ Return plain JSON only:
         )}
 
         {view === 'today' && (
-          <div className="space-y-4 anim-tab">
+          <TodaySubApp theme={theme} activeViewKey={view}>
+            <div className="space-y-4 anim-tab">
             <div className="flex justify-end">
               <button
                 type="button"
@@ -3166,7 +3181,8 @@ Return plain JSON only:
                 </div>
               )}
             </div>
-          </div>
+            </div>
+          </TodaySubApp>
         )}
 
         {todayLayoutEditorOpen && (
@@ -3343,7 +3359,8 @@ Return plain JSON only:
         )}
 
         {view === 'plan' && (
-          <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 anim-tab">
+          <PlanSubApp theme={theme} activeViewKey={view}>
+            <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 anim-tab">
             <div className="xl:col-span-3 glass rounded-3xl p-6 md:p-8 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                 <h2 className="syne text-xl font-bold text-[#0A1628]">{t.plannerTitle}</h2>
@@ -3741,11 +3758,13 @@ Return plain JSON only:
                 </div>
               </div>
             </div>
-          </div>
+            </div>
+          </PlanSubApp>
         )}
 
         {view === 'learn' && (
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 anim-tab">
+          <LearnSubApp theme={theme} activeViewKey={view}>
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 anim-tab">
             <div className="xl:col-span-2 space-y-5">
               <div data-tutorial="learn-pomodoro" className="glass rounded-3xl p-6 md:p-8 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
@@ -3995,11 +4014,22 @@ Return plain JSON only:
                 </div>
               </div>
             </div>
-          </div>
+            </div>
+          </LearnSubApp>
+        )}
+
+        {view === 'quiz' && (
+          <QuizSubApp
+            theme={theme}
+            activeViewKey={view}
+            data={multipleChoicesData}
+            onChange={setMultipleChoicesData}
+          />
         )}
 
         {view === 'library' && (
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 anim-tab">
+          <LibrarySubApp theme={theme} activeViewKey={view}>
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 anim-tab">
             <div className="xl:col-span-3">
               <div className="glass rounded-3xl p-5 shadow-sm sticky top-4">
                 <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[2.5px] mb-3">{t.categoriesTagsTitle}</h3>
@@ -4250,7 +4280,8 @@ Return plain JSON only:
                 </div>
               </div>
             </div>
-          </div>
+            </div>
+          </LibrarySubApp>
         )}
 
         <footer className="mt-12 pb-10 text-center text-xs text-slate-500">

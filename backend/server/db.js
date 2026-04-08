@@ -10,6 +10,20 @@ const DEFAULT_DB = {
   pushSubscriptions: {},
 };
 
+function createDefaultMultipleChoicesPayload() {
+  return {
+    questionBank: [],
+    attempts: [],
+    preferences: {
+      selectedSections: [],
+      questionCountInput: '',
+      timeLimitInput: '',
+      isShuffleQuestions: false,
+      isUnlimitedTime: false,
+    },
+  };
+}
+
 export const defaultUserPayload = {
   notes: [],
   tasks: [],
@@ -19,6 +33,7 @@ export const defaultUserPayload = {
   studySessions: [],
   revisions: [],
   exams: [],
+  multipleChoices: createDefaultMultipleChoicesPayload(),
   pomodoro: null,
   todayLayout: null,
 };
@@ -143,15 +158,34 @@ function cloneDefaultPayload() {
     studySessions: [],
     revisions: [],
     exams: [],
+    multipleChoices: createDefaultMultipleChoicesPayload(),
     pomodoro: null,
     todayLayout: null,
   };
 }
 
 function normalizeUserDataPayload(payload = {}) {
+  const source = payload && typeof payload === 'object' ? payload : {};
+  const sourceMultipleChoices = source.multipleChoices && typeof source.multipleChoices === 'object'
+    ? source.multipleChoices
+    : {};
+  const sourcePreferences = sourceMultipleChoices.preferences && typeof sourceMultipleChoices.preferences === 'object'
+    ? sourceMultipleChoices.preferences
+    : {};
+
+  const defaultPayload = cloneDefaultPayload();
+
   return {
-    ...cloneDefaultPayload(),
-    ...(payload && typeof payload === 'object' ? payload : {}),
+    ...defaultPayload,
+    ...source,
+    multipleChoices: {
+      ...defaultPayload.multipleChoices,
+      ...sourceMultipleChoices,
+      preferences: {
+        ...defaultPayload.multipleChoices.preferences,
+        ...sourcePreferences,
+      },
+    },
   };
 }
 

@@ -82,6 +82,132 @@ function ensureObject(value, fallback = null) {
   return value;
 }
 
+const MCQ_OPTION_LABELS = ['A', 'B', 'C', 'D'];
+const MAX_MCQ_QUESTION_BANK = 5000;
+const MAX_MCQ_ATTEMPTS = 120;
+
+function clipText(value, maxLength = 4000) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  return text.slice(0, maxLength);
+}
+
+function parseNonNegativeInt(value, fallback = 0, max = Number.MAX_SAFE_INTEGER) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return Math.min(parsed, max);
+}
+
+function normalizeMcqSection(value) {
+  return clipText(value, 80) || 'Uncategorized';
+}
+
+function normalizeMcqQuestion(question, index) {
+  const source = ensureObject(question, {});
+  const text = clipText(source.text, 5000);
+  if (!text) return null;
+
+  const optionsSource = ensureObject(source.options, {});
+  const options = {};
+
+  MCQ_OPTION_LABELS.forEach((label) => {
+    options[label] = clipText(optionsSource[label], 2400);
+  });
+
+  const hasAtLeastTwoOptions = MCQ_OPTION_LABELS.filter((label) => options[label]).length >= 2;
+  if (!hasAtLeastTwoOptions) return null;
+
+  const providedAnswer = String(source.correctAnswer || '').trim().toUpperCase();
+  const fallbackAnswer = MCQ_OPTION_LABELS.find((label) => options[label]) || 'A';
+  const correctAnswer = MCQ_OPTION_LABELS.includes(providedAnswer) && options[providedAnswer]
+    ? providedAnswer
+    : fallbackAnswer;
+
+  return {
+    id: parseNonNegativeInt(source.id, index + 1, MAX_MCQ_QUESTION_BANK * 10) || index + 1,
+    section: normalizeMcqSection(source.section),
+    text,
+    options,
+    correctAnswer,
+    explanation: clipText(source.explanation, 8000),
+  };
+}
+
+function normalizeMcqAttempt(attempt, index) {
+  const source = ensureObject(attempt, {});
+
+  const totalQuestions = parseNonNegativeInt(source.totalQuestions, 0, MAX_MCQ_QUESTION_BANK);
+  const correctCount = parseNonNegativeInt(source.correctCount, 0, totalQuestions);
+  const answeredSeed = parseNonNegativeInt(source.answeredCount, correctCount, totalQuestions);
+  const answeredCount = Math.max(correctCount, Math.min(answeredSeed, totalQuestions));
+  const wrongCount = Math.max(0, Math.min(answeredCount - correctCount, totalQuestions));
+  const unansweredCount = Math.max(0, totalQuestions - answeredCount);
+
+  const createdAtDate = new Date(source.createdAt || Date.now());
+  const createdAt = Number.isNaN(createdAtDate.getTime())
+    ? new Date().toISOString()
+    : createdAtDate.toISOString();
+
+  const sections = Array.from(new Set(
+    ensureArray(source.sections)
+      .map((section) => normalizeMcqSection(section))
+      .filter(Boolean),
+  )).slice(0, 120);
+
+  const wrongQuestionIds = Array.from(new Set(
+    ensureArray(source.wrongQuestionIds)
+      .map((id) => parseNonNegativeInt(id, -1, MAX_MCQ_QUESTION_BANK * 10))
+      .filter((id) => id > 0),
+  )).slice(0, 200);
+
+  return {
+    id: clipText(source.id, 64) || `attempt-${index + 1}-${createdAt}`,
+    createdAt,
+    totalQuestions,
+    answeredCount,
+    correctCount,
+    wrongCount,
+    unansweredCount,
+    scorePercent: totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0,
+    timeUsedSeconds: parseNonNegativeInt(source.timeUsedSeconds, 0, 24 * 60 * 60),
+    timeLimitSeconds: source.timeLimitSeconds === null ? null : parseNonNegativeInt(source.timeLimitSeconds, 0, 24 * 60 * 60),
+    sections,
+    wrongQuestionIds,
+  };
+}
+
+function normalizeMultipleChoicesData(value) {
+  const source = ensureObject(value, {});
+  const questionBank = ensureArray(source.questionBank)
+    .map((question, index) => normalizeMcqQuestion(question, index))
+    .filter(Boolean)
+    .slice(0, MAX_MCQ_QUESTION_BANK);
+
+  const sections = Array.from(new Set(questionBank.map((question) => question.section || 'Uncategorized')));
+
+  const preferencesSource = ensureObject(source.preferences, {});
+  const selectedSections = Array.from(new Set(
+    ensureArray(preferencesSource.selectedSections)
+      .map((section) => normalizeMcqSection(section))
+      .filter((section) => sections.includes(section)),
+  )).slice(0, 120);
+
+  return {
+    questionBank,
+    attempts: ensureArray(source.attempts)
+      .map((attempt, index) => normalizeMcqAttempt(attempt, index))
+      .filter(Boolean)
+      .slice(0, MAX_MCQ_ATTEMPTS),
+    preferences: {
+      selectedSections: selectedSections.length ? selectedSections : sections,
+      questionCountInput: String(preferencesSource.questionCountInput ?? '').replace(/\D+/g, '').slice(0, 4),
+      timeLimitInput: String(preferencesSource.timeLimitInput ?? '').replace(/\D+/g, '').slice(0, 4),
+      isShuffleQuestions: Boolean(preferencesSource.isShuffleQuestions),
+      isUnlimitedTime: Boolean(preferencesSource.isUnlimitedTime),
+    },
+  };
+}
+
 function normalizeUserData(body = {}) {
   return {
     notes: ensureArray(body.notes),
@@ -92,6 +218,7 @@ function normalizeUserData(body = {}) {
     studySessions: ensureArray(body.studySessions),
     revisions: ensureArray(body.revisions),
     exams: ensureArray(body.exams),
+    multipleChoices: normalizeMultipleChoicesData(body.multipleChoices),
     pomodoro: ensureObject(body.pomodoro, null),
     todayLayout: ensureObject(body.todayLayout, null),
   };
